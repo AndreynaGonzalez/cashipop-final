@@ -2044,19 +2044,36 @@ export default function App() {
   // CIERRE (tab)
   // ══════════════════════════════════════════════════════════
   if (pantalla === 'cierre') {
-    const tieneIngresos = Object.values(ing).some(v => n(v) > 0)
-    const lineas=[
-      {key:'bicentenario',label:'Bicentenario',         Icon:Landmark,   moneda:'BS'},
-      {key:'bancaribe',   label:'Bancaribe',             Icon:Landmark,   moneda:'BS'},
-      {key:'banesco',     label:'Banesco',               Icon:Landmark,   moneda:'BS'},
-      {key:'bancamiga',   label:'Bancamiga',             Icon:Landmark,   moneda:'BS'},
-      {key:'pagos_dia',   label:'Pagos del dia',         Icon:CreditCard, moneda:'BS'},
-      {key:'efectivo_bs', label:'Efectivo',              Icon:Banknote,   moneda:'BS'},
-      {key:'delivery',    label:'Delivery',              Icon:Bike,       moneda:'BS'},
-      {key:'pedidosya_usd',label:'Pedidos Ya Prepago',   Icon:Package,    moneda:'USD'},
-      {key:'pedidosya_bs', label:'Pedidos Ya Efectivo',  Icon:Bike,       moneda:'BS'},
-      {key:'divisas_usd', label:'Divisas',               Icon:DollarSign, moneda:'USD'},
-    ].filter(c=>n(ing[c.key])>0)
+    // ── Derivar estado del cierre desde Supabase para la fecha seleccionada ──
+    const cierreIng = dbIngresos.filter(i => i.fecha === fechaCierre)
+    const cierreGas = dbGastos.filter(g => g.fecha === fechaCierre)
+    const cierreTotalIng = redondear(cierreIng.reduce((a, i) => a + toUSD(i.monto, i.moneda, data.tasa), 0))
+    const cierreTotalGas = redondear(cierreGas.reduce((a, g) => a + toUSD(g.monto, g.moneda, data.tasa), 0))
+    const cierreNeto = redondear(cierreTotalIng - cierreTotalGas)
+    const tieneCierre = cierreIng.length > 0
+    const esHoy = fechaCierre === hoy()
+    // Para el formulario local, usamos data.ingresos solo si es hoy
+    const tieneIngresosLocal = esHoy && Object.values(ing).some(v => n(v) > 0)
+    const cajaCerrada = esHoy ? data.cerrada : tieneCierre
+
+    // Mapeo de ingresos de Supabase para mostrar lineas
+    const cierreLineas = [
+      { concepto:'Bicentenario', Icon:Landmark, moneda:'BS' },
+      { concepto:'Bancamiga', Icon:Landmark, moneda:'BS' },
+      { concepto:'Bancaribe', Icon:Landmark, moneda:'BS' },
+      { concepto:'Banesco', Icon:Landmark, moneda:'BS' },
+      { concepto:'Pagomovil', Icon:CreditCard, moneda:'BS' },
+      { concepto:'Efectivo Bolivares', Icon:Banknote, moneda:'BS' },
+      { concepto:'Efectivo Dolares', Icon:Banknote, moneda:'USD' },
+      { concepto:'Delivery', Icon:Bike, moneda:'BS' },
+      { concepto:'Pedidos Ya Prepago', Icon:Package, moneda:'USD' },
+      { concepto:'Pedidos Ya Efectivo', Icon:Bike, moneda:'BS' },
+      { concepto:'Divisas', Icon:DollarSign, moneda:'USD' },
+      { concepto:'Cuentas Por Cobrar', Icon:AlertCircle, moneda:'USD' },
+    ].map(l => {
+      const row = cierreIng.find(i => i.concepto === l.concepto)
+      return row ? { ...l, monto: row.monto, id: row.id } : null
+    }).filter(Boolean)
 
     return (
       <div style={{minHeight:'100svh',background:T.bg,padding:'52px 20px 96px',overflowY:'auto'}}>
@@ -2064,14 +2081,21 @@ export default function App() {
           <h2 style={{fontSize:22,fontWeight:800,color:T.navy,letterSpacing:'-.025em'}}>Cierre de Caja</h2>
           <WaBtn onClick={()=>enviarResumen()}/>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
           <input type="date" value={fechaCierre} onChange={e => setFechaCierre(e.target.value)} max={hoy()}
             style={{flex:1,height:38,fontSize:14,fontWeight:600,color:T.navy,background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:12,padding:'0 12px',outline:'none'}}/>
           <span style={{fontSize:12,color:T.muted}}>Tasa Bs {data.tasa}</span>
         </div>
 
-        {/* Entrada dual: Foto o Manual */}
-        {!tieneIngresos && !data.cerrada && (
+        {/* Aviso de fecha pasada */}
+        {!esHoy && (
+          <p style={{fontSize:12,fontWeight:600,color:T.brandGold,marginBottom:14}}>
+            Viendo datos del {fDate(fechaCierre)}
+          </p>
+        )}
+
+        {/* Entrada dual: Foto o Manual (solo si no hay cierre y es editable) */}
+        {!tieneCierre && !tieneIngresosLocal && (
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
             <button onClick={()=>cierreFileRef.current?.click()} style={{
               background:T.brandGold,color:T.brand,border:'none',borderRadius:20,padding:'20px 12px',
@@ -2103,53 +2127,50 @@ export default function App() {
           </div>
         )}
 
-        {/* Tarjeta resumen principal */}
+        {/* Tarjeta resumen — datos de Supabase para la fecha seleccionada */}
         <div style={{background:'linear-gradient(145deg,#3D2539,#5E405B)',borderRadius:32,padding:'28px 24px',marginBottom:18,boxShadow:'0 16px 48px rgba(0,0,0,0.18)'}}>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
             <div>
               <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'.08em'}}>INGRESOS</p>
-              <p style={{fontSize:21,fontWeight:900,color:'#FFB752',marginTop:5,letterSpacing:'-.02em'}}>{fUSD(tUSD)}</p>
+              <p style={{fontSize:21,fontWeight:900,color:'#FFB752',marginTop:5,letterSpacing:'-.02em'}}>{fUSD(cierreTotalIng)}</p>
             </div>
             <div>
               <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'.08em'}}>GASTOS</p>
-              <p style={{fontSize:21,fontWeight:900,color:'#FF7752',marginTop:5,letterSpacing:'-.02em'}}>{fUSD(tGas)}</p>
+              <p style={{fontSize:21,fontWeight:900,color:'#FF7752',marginTop:5,letterSpacing:'-.02em'}}>{fUSD(cierreTotalGas)}</p>
             </div>
           </div>
           <div style={{borderTop:'1px solid rgba(255,255,255,0.1)',paddingTop:18,marginTop:18}}>
-            <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'.08em'}}>NETO FINAL</p>
-            <p style={{fontSize:42,fontWeight:900,color:'#fff',letterSpacing:'-.035em',lineHeight:1.1,marginTop:8}}>{fUSD(neto)}</p>
-            <p style={{fontSize:13,color:'rgba(255,255,255,0.3)',marginTop:6}}>{fBS(neto*data.tasa)}</p>
+            <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'.08em'}}>NETO</p>
+            <p style={{fontSize:42,fontWeight:900,color:'#fff',letterSpacing:'-.035em',lineHeight:1.1,marginTop:8}}>{fUSD(cierreNeto)}</p>
           </div>
-          {cc>0&&<div style={{marginTop:14,paddingTop:14,borderTop:'1px solid rgba(255,183,82,0.25)'}}>
-            <p style={{fontSize:12,color:'#FFB752',fontWeight:600}}>POR COBRAR (no incluido): {fUSD(cc)}</p>
-          </div>}
         </div>
 
-        {/* Boton editar ingresos si ya hay datos */}
-        {tieneIngresos && !data.cerrada && (
-          <Btn onClick={()=>go('ingresos')} bg={T.cobaltLight} color={T.brand} full icon={Edit3} style={{marginBottom:18,padding:'13px',fontSize:13,boxShadow:'none'}}>
+        {/* Boton editar si hay cierre o datos locales */}
+        {(tieneCierre || tieneIngresosLocal) && !cajaCerrada && (
+          <Btn onClick={()=>{if(!esHoy)editarCierreHistorico(fechaCierre,cierreIng);else go('ingresos')}} bg={T.cobaltLight} color={T.brand} full icon={Edit3} style={{marginBottom:18,padding:'13px',fontSize:13,boxShadow:'none'}}>
             Editar ingresos del cierre
           </Btn>
         )}
 
-        {lineas.length>0&&(
+        {/* Desglose de ingresos desde Supabase */}
+        {cierreLineas.length > 0 && (
           <>
             <Label>DESGLOSE DE INGRESOS</Label>
             <Card style={{marginBottom:18,borderRadius:28}}>
-              {lineas.map(({key,label,Icon,moneda},i)=>{
-                const val=n(ing[key]); const usdV=moneda==='USD'?val:val/data.tasa
-                return(
-                  <div key={key}>
-                    {i>0&&<Sep/>}
+              {cierreLineas.map((l, i) => {
+                const usdV = l.moneda === 'USD' ? l.monto : redondear(l.monto / data.tasa)
+                return (
+                  <div key={l.concepto}>
+                    {i > 0 && <Sep/>}
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                       <div style={{display:'flex',alignItems:'center',gap:10}}>
                         <div style={{width:32,height:32,borderRadius:9,background:T.cobaltLight,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                          <Icon size={15} color={T.cobalt} strokeWidth={1.75}/>
+                          <l.Icon size={15} color={T.cobalt} strokeWidth={1.75}/>
                         </div>
-                        <span style={{fontSize:13,fontWeight:600,color:T.sub}}>{label}</span>
+                        <span style={{fontSize:13,fontWeight:600,color:T.sub}}>{l.concepto}</span>
                       </div>
                       <div style={{textAlign:'right'}}>
-                        <p style={{fontSize:15,fontWeight:800,color:T.navy}}>{moneda==='USD'?fUSD(val):fBS(val)}</p>
+                        <p style={{fontSize:15,fontWeight:800,color:T.navy}}>{l.moneda==='USD'?fUSD(l.monto):fBS(l.monto)}</p>
                         <p style={{fontSize:11,color:T.muted}}>{fUSD(usdV)}</p>
                       </div>
                     </div>
@@ -2160,69 +2181,62 @@ export default function App() {
           </>
         )}
 
-        {cc>0&&(
+        {/* Desglose de gastos desde Supabase */}
+        {cierreGas.length > 0 && (
           <>
-            <Label>PENDIENTE POR COBRAR</Label>
-            <Card style={{marginBottom:18,background:T.amberLight,border:`1px solid ${T.amber}22`}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <div style={{display:'flex',alignItems:'center',gap:9}}>
-                  <AlertCircle size={16} color={T.amber} strokeWidth={1.75}/>
-                  <span style={{fontSize:14,fontWeight:600,color:T.amber}}>Cuentas por cobrar</span>
+            <Label>GASTOS DEL DIA</Label>
+            <Card style={{marginBottom:22,borderRadius:28}}>
+              {cierreGas.map((g, i) => (
+                <div key={g.id}>
+                  {i > 0 && <Sep/>}
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <div>
+                      <p style={{fontSize:14,fontWeight:600,color:T.navy}}>{g.concepto}</p>
+                      <p style={{fontSize:12,fontWeight:600,color:T.muted,marginTop:2}}>{g.categoria}</p>
+                    </div>
+                    <p style={{fontSize:15,fontWeight:800,color:T.rose}}>{fUSD(toUSD(g.monto, g.moneda, data.tasa))}</p>
+                  </div>
                 </div>
-                <div style={{textAlign:'right'}}>
-                  <p style={{fontSize:17,fontWeight:800,color:T.amber}}>{fUSD(cc)}</p>
-                  <p style={{fontSize:11,color:T.amber+'88'}}>No incluido</p>
-                </div>
-              </div>
+              ))}
             </Card>
           </>
         )}
 
-        {data.gastos.length>0&&(
-          <>
-            <Label>DESGLOSE DE GASTOS</Label>
-            <Card style={{marginBottom:22,borderRadius:28}}>
-              {data.gastos.map((g,i)=>{
-                const cat=CATS.find(c=>c.id===g.categoria); const enUSD=n(g.monto)*(g.moneda==='USD'?1:1/data.tasa)
-                return(
-                  <div key={g.id}>
-                    {i>0&&<Sep/>}
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                      <div>
-                        <p style={{fontSize:14,fontWeight:600,color:T.navy}}>{g.concepto}</p>
-                        <p style={{fontSize:12,fontWeight:600,color:cat?.c||T.muted,marginTop:2}}>{cat?.label}</p>
-                      </div>
-                      <div style={{textAlign:'right'}}>
-                        <p style={{fontSize:15,fontWeight:800,color:T.rose}}>{g.moneda==='USD'?fUSD(g.monto):fBS(g.monto)}</p>
-                        <p style={{fontSize:11,color:T.muted}}>{fUSD(enUSD)}</p>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </Card>
-          </>
+        {/* Sin datos */}
+        {!tieneCierre && !tieneIngresosLocal && cierreGas.length === 0 && (
+          <Card style={{textAlign:'center',padding:40,borderRadius:28,marginBottom:18}}>
+            <BarChart3 size={30} color={T.muted} strokeWidth={1.5} style={{margin:'0 auto'}}/>
+            <p style={{fontSize:15,fontWeight:700,color:T.navy,marginTop:12}}>Sin datos para {fDate(fechaCierre)}</p>
+            <p style={{fontSize:13,color:T.sub,marginTop:4}}>Sube una foto o carga los datos manualmente</p>
+          </Card>
         )}
 
         {/* Cerrar / Reabrir */}
-        {!data.cerrada ? (
-          <Btn onClick={cerrarCaja} bg={T.navy} full icon={Lock} style={{padding:'16px',fontSize:14,boxShadow:'0 4px 0 rgba(0,0,0,0.25)'}}>
-            Cerrar Caja del Dia
-          </Btn>
-        ) : (
+        {cajaCerrada ? (
           <>
             <Card style={{background:T.forestLight,textAlign:'center',padding:20,borderRadius:24,marginBottom:12}}>
               <CheckCircle size={26} color={T.forest} strokeWidth={1.75} style={{margin:'0 auto'}}/>
               <p style={{fontSize:15,fontWeight:700,color:T.forest,marginTop:8}}>Caja cerrada</p>
             </Card>
-            <button onClick={reabrirCaja} style={{
-              background:'none',border:'none',width:'100%',padding:'12px',
-              fontSize:13,fontWeight:600,color:T.muted,cursor:'pointer',textAlign:'center',
-              WebkitTapHighlightColor:'transparent',
-            }}>
-              Te equivocaste? Reabrir caja de hoy
-            </button>
+            {esHoy && (
+              <button onClick={reabrirCaja} style={{
+                background:'none',border:'none',width:'100%',padding:'12px',
+                fontSize:13,fontWeight:600,color:T.muted,cursor:'pointer',textAlign:'center',
+                WebkitTapHighlightColor:'transparent',
+              }}>
+                Te equivocaste? Reabrir caja de hoy
+              </button>
+            )}
+            {!esHoy && (
+              <Btn onClick={()=>editarCierreHistorico(fechaCierre,cierreIng)} bg={T.cobaltLight} color={T.brand} full icon={Edit3} style={{padding:'13px',fontSize:13,boxShadow:'none'}}>
+                Editar cierre de {fDate(fechaCierre)}
+              </Btn>
+            )}
           </>
+        ) : (esHoy || tieneIngresosLocal) && (
+          <Btn onClick={cerrarCaja} bg={T.navy} full icon={Lock} style={{padding:'16px',fontSize:14,boxShadow:'0 4px 0 rgba(0,0,0,0.25)'}}>
+            Cerrar Caja {esHoy ? 'del Dia' : `del ${fDate(fechaCierre)}`}
+          </Btn>
         )}
 
         <BottomNav pantalla={pantalla} go={go}/>
