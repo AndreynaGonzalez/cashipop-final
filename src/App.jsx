@@ -596,8 +596,10 @@ export default function App() {
   const [liveTranscript, setLiveTranscript] = useState('')
   const [transcriptFinal, setTranscriptFinal] = useState('')
 
-  const fileRef = useRef(null)
-  const srRef   = useRef(null)
+  const fileRef      = useRef(null)
+  const gastoFileRef = useRef(null)
+  const homeFileRef  = useRef(null)
+  const srRef        = useRef(null)
   const SR      = window.SpeechRecognition || window.webkitSpeechRecognition
 
   const go        = useCallback(p => setPantalla(p), [])
@@ -1211,7 +1213,7 @@ export default function App() {
             <p style={{fontSize:12,color:'rgba(255,255,255,0.6)',marginTop:2}}>Extraigo los valores automáticamente</p>
           </div>
           <ChevronRight size={16} color='rgba(255,255,255,0.4)' style={{marginLeft:'auto'}}/>
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>e.target.files[0]&&procesarFoto(e.target.files[0])}/>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{if(e.target.files[0])procesarFoto(e.target.files[0]);e.target.value=''}}/>
         </Card>
 
         <Label>BANCOS</Label>
@@ -1309,13 +1311,19 @@ export default function App() {
         /* ── Estado: Reposo ── */
         ) : (
           <>
-            <Label>DICTADO RAPIDO</Label>
+            <Label>CARGA RAPIDA</Label>
             <p style={{fontSize:13,color:T.sub,marginBottom:14,lineHeight:1.5}}>
-              Dicta tus gastos y la IA los separa automaticamente
+              Dicta o escanea y la IA extrae los gastos
             </p>
-            <Btn onClick={()=>iniciarVoz('g:multiple')} bg={T.cobalt} full icon={Mic} style={{fontSize:14,padding:'16px'}}>
-              Iniciar dictado por voz
-            </Btn>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              <Btn onClick={()=>iniciarVoz('g:multiple')} bg={T.cobalt} full icon={Mic} style={{fontSize:13,padding:'15px'}}>
+                Dictar por voz
+              </Btn>
+              <Btn onClick={()=>gastoFileRef.current?.click()} bg={T.navy} full icon={Camera} style={{fontSize:13,padding:'15px'}}>
+                Escanear foto
+              </Btn>
+            </div>
+            <input ref={gastoFileRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{if(e.target.files[0])procesarFoto(e.target.files[0]);e.target.value=''}}/>
           </>
         )}
 
@@ -1415,25 +1423,52 @@ export default function App() {
         </Card>
       </div>
 
-      {/* CTA principal: Registrar Gasto */}
-      <button onClick={()=>go('nuevoGasto')} style={{
-        background:T.navy, color:'#fff', border:'none',
-        borderRadius:20, padding:'22px 20px', width:'100%',
-        fontSize:17, fontWeight:800, letterSpacing:'-.01em',
-        cursor:'pointer', display:'flex', alignItems:'center',
-        justifyContent:'center', gap:12,
-        boxShadow:'0 6px 0 rgba(0,0,0,0.28)',
-        WebkitTapHighlightColor:'transparent',
-        transition:'transform .08s, box-shadow .08s',
-      }}
-        onPointerDown={e=>{e.currentTarget.style.transform='translateY(4px)';e.currentTarget.style.boxShadow='0 2px 0 rgba(0,0,0,0.28)'}}
-        onPointerUp={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 6px 0 rgba(0,0,0,0.28)'}}
-        onPointerLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 6px 0 rgba(0,0,0,0.28)'}}
-      >
-        <Mic size={20} strokeWidth={1.75}/>
-        Registrar Gasto
-        <Camera size={20} strokeWidth={1.75}/>
-      </button>
+      {/* Acciones rápidas */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
+        <button onClick={()=>{go('nuevoGasto');setTimeout(()=>iniciarVoz('g:multiple'),300)}} style={{
+          background:T.cobalt, color:'#fff', border:'none',
+          borderRadius:20, padding:'20px 16px', width:'100%',
+          cursor:'pointer', display:'flex', flexDirection:'column',
+          alignItems:'center', gap:10,
+          boxShadow:`0 5px 0 ${T.cobalt}55`,
+          WebkitTapHighlightColor:'transparent',
+          transition:'transform .08s, box-shadow .08s',
+        }}
+          onPointerDown={e=>{e.currentTarget.style.transform='translateY(3px)';e.currentTarget.style.boxShadow=`0 2px 0 ${T.cobalt}55`}}
+          onPointerUp={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow=`0 5px 0 ${T.cobalt}55`}}
+          onPointerLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow=`0 5px 0 ${T.cobalt}55`}}
+        >
+          <div style={{width:44,height:44,borderRadius:14,background:'rgba(255,255,255,0.15)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <Mic size={22} color='#fff' strokeWidth={1.75}/>
+          </div>
+          <span style={{fontSize:14,fontWeight:800}}>Dictar gastos</span>
+        </button>
+
+        <button onClick={()=>homeFileRef.current?.click()} style={{
+          background:T.navy, color:'#fff', border:'none',
+          borderRadius:20, padding:'20px 16px', width:'100%',
+          cursor:'pointer', display:'flex', flexDirection:'column',
+          alignItems:'center', gap:10,
+          boxShadow:'0 5px 0 rgba(0,0,0,0.3)',
+          WebkitTapHighlightColor:'transparent',
+          transition:'transform .08s, box-shadow .08s',
+        }}
+          onPointerDown={e=>{e.currentTarget.style.transform='translateY(3px)';e.currentTarget.style.boxShadow='0 2px 0 rgba(0,0,0,0.3)'}}
+          onPointerUp={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 rgba(0,0,0,0.3)'}}
+          onPointerLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 rgba(0,0,0,0.3)'}}
+        >
+          <div style={{width:44,height:44,borderRadius:14,background:'rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <Camera size={22} color='#fff' strokeWidth={1.75}/>
+          </div>
+          <span style={{fontSize:14,fontWeight:800}}>Escanear factura</span>
+        </button>
+        <input ref={homeFileRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{if(e.target.files[0])procesarFoto(e.target.files[0]);e.target.value=''}}/>
+      </div>
+
+      {/* Botón secundario: gasto manual */}
+      <Btn onClick={()=>go('nuevoGasto')} bg={T.border} color={T.navy} full icon={Plus} style={{fontSize:13,padding:'14px',boxShadow:'none'}}>
+        Registrar gasto manual
+      </Btn>
 
       <BottomNav pantalla={pantalla} go={go}/>
       <Confetti active={confetti}/><Toast msg={toast}/>
