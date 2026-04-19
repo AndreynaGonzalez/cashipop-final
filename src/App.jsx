@@ -343,7 +343,17 @@ function parsearVozMultiple(texto, tasa) {
 
 // ─── OpenRouter IA ────────────────────────────────────────────────────────────
 const OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_KEY || ''
-const SYSTEM_PROMPT = 'Contador Andino Pop. Tasa: 481.21. Si dice Bs, divide entre tasa y redondea a 2 decimales. Si dice $, mantiene. Numeros redondos se quedan redondos. Capitaliza cada palabra del concepto. Si el monto original era en Bs, incluyelo en "bs". Responde solo JSON: [{"c":"Concepto","m":0.00,"bs":0}] donde "bs" es el monto original en bolivares (0 si era en dolares).'
+const SYSTEM_PROMPT = 'Contador Andino Pop. Tasa: 481.21. ESTO ES UN GASTO/EGRESO, nunca un ingreso. Si dice Bs, divide entre tasa y redondea a 2 decimales. Si dice $, mantiene. Numeros redondos se quedan redondos. Capitaliza cada palabra del concepto. Si el monto original era en Bs, incluyelo en "bs". Responde solo JSON: [{"c":"Concepto","m":0.00,"bs":0}] donde "bs" es el monto original en bolivares (0 si era en dolares).'
+
+const FACTURA_SYSTEM = `Eres un extractor de gastos/egresos para el restaurante Andino Pop.
+La foto es una FACTURA DE PROVEEDOR o TICKET DE COMPRA. Esto es siempre un GASTO, nunca un ingreso.
+Extrae cada item o el total. Tasa: 481.21. Si el monto esta en Bs, divide entre la tasa.
+Capitaliza cada palabra. Responde SOLO JSON:
+[{"c":"Concepto","m":0.00,"bs":0}]
+- "c" = concepto/descripcion del gasto
+- "m" = monto en USD (si era Bs, ya dividido entre tasa)
+- "bs" = monto original en Bs (0 si era en dolares)
+Si solo hay un total, devuelve un solo item con el concepto del proveedor/tienda.`
 
 async function procesarGastoConIA(texto, tasa) {
   const prompt = SYSTEM_PROMPT.replace('481.21', String(tasa))
@@ -378,6 +388,46 @@ async function procesarGastoConIA(texto, tasa) {
 
   const raw = json.choices?.[0]?.message?.content || '[]'
   console.log('IA response:', raw)
+  const match = raw.match(/\[[\s\S]*\]/)
+  return match ? JSON.parse(match[0]) : []
+}
+
+async function procesarFotoComoGasto(file, tasa) {
+  const base64 = await new Promise((res) => {
+    const reader = new FileReader()
+    reader.onload = () => res(reader.result.split(',')[1])
+    reader.readAsDataURL(file)
+  })
+
+  const prompt = FACTURA_SYSTEM.replace('481.21', String(tasa))
+  const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${OPENROUTER_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-3-flash-preview',
+      messages: [
+        { role: 'system', content: prompt },
+        { role: 'user', content: [
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+          { type: 'text', text: 'Extrae los gastos de esta factura o ticket de compra.' },
+        ]},
+      ],
+      max_tokens: 500,
+      temperature: 0,
+    }),
+  })
+
+  if (!resp.ok) {
+    const errBody = await resp.text().catch(() => '')
+    throw new Error(`${resp.status} ${errBody.slice(0, 100)}`)
+  }
+  const json = await resp.json()
+  if (json.error) throw new Error(json.error.message || JSON.stringify(json.error))
+  const raw = json.choices?.[0]?.message?.content || '[]'
+  console.log('Factura IA response:', raw)
   const match = raw.match(/\[[\s\S]*\]/)
   return match ? JSON.parse(match[0]) : []
 }
@@ -720,7 +770,41 @@ export default function App() {
     showToast('¡Caja cerrada!')
   }
 
-  // ── OCR con IA ─────────────────────────────────────────────────────────────────
+  // ── Escanear factura como GASTO ───────────────────────────────────────────────
+  async function escanearFactura(file) {
+    if (!OPENROUTER_KEY) { showToast('Falta configurar VITE_OPENROUTER_KEY'); return }
+    go('procesando'); setProgOCR(10)
+    try {
+      setProgOCR(40)
+      const items = await procesarFotoComoGasto(file, data.tasa)
+      setProgOCR(100)
+      if (items.length > 0) {
+        const mapped = items.map((item, i) => ({
+          concepto: capitalizar(item.c),
+          monto: String(redondear(item.m)),
+          moneda: 'USD',
+          bsOrig: item.bs && item.bs > 0 ? Math.round(item.bs) : null,
+          categoria: 'insumos',
+          tipo: 'gasto',
+          id: Date.now() + i + Math.random(),
+        }))
+        setPendGastos(mapped); go('confirmarVoz')
+        showToast(`${mapped.length} gasto(s) detectado(s)`)
+      } else {
+        showToast('No pude extraer gastos de la foto')
+        go('nuevoGasto')
+      }
+    } catch (err) {
+      console.error('Error escaneando factura:', err)
+      const msg = err?.message || String(err)
+      if (msg.includes('402')) showToast('Sin creditos en OpenRouter.')
+      else if (msg.includes('401')) showToast('API key invalida.')
+      else showToast(`Error: ${msg.slice(0, 60)}`)
+      go('nuevoGasto')
+    }
+  }
+
+  // ── OCR con IA (cierre de caja / ingresos) ─────────────────────────────────────
   async function procesarFoto(file) {
     if (!OPENROUTER_KEY) { showToast('Falta configurar VITE_OPENROUTER_KEY'); return }
     go('procesando'); setProgOCR(10)
@@ -1378,7 +1462,7 @@ export default function App() {
                 Escanear foto
               </Btn>
             </div>
-            <input ref={gastoFileRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{if(e.target.files[0])procesarFoto(e.target.files[0]);e.target.value=''}}/>
+            <input ref={gastoFileRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{if(e.target.files[0])escanearFactura(e.target.files[0]);e.target.value=''}}/>
           </>
         )}
 
@@ -1517,7 +1601,7 @@ export default function App() {
           </div>
           <span style={{fontSize:14,fontWeight:800}}>Escanear factura</span>
         </button>
-        <input ref={homeFileRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{if(e.target.files[0])procesarFoto(e.target.files[0]);e.target.value=''}}/>
+        <input ref={homeFileRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{if(e.target.files[0])escanearFactura(e.target.files[0]);e.target.value=''}}/>
       </div>
 
       {/* Botón secundario: gasto manual */}
