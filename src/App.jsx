@@ -440,15 +440,15 @@ async function procesarFotoComoGasto(file, tasa) {
 }
 
 // ─── Formato ──────────────────────────────────────────────────────────────────
-const fUSD = v => {
-  const num = redondear(parseFloat(v) || 0)
-  return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+function formatMoney(v) {
+  const num = redondear(Math.abs(parseFloat(v) || 0))
+  const [int, dec = '00'] = num.toFixed(2).split('.')
+  const miles = int.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${miles},${dec}`
 }
-const fBS = v => {
-  const num = redondear(parseFloat(v) || 0)
-  const esEntero = num === Math.floor(num)
-  return `Bs ${num.toLocaleString('es-VE', { minimumFractionDigits: esEntero ? 0 : 2, maximumFractionDigits: 2 })}`
-}
+
+const fUSD = v => `$ ${formatMoney(v)}`
+const fBS  = v => `Bs ${formatMoney(v)}`
 const fDate = iso => {
   const [y,m,d] = iso.split('-')
   const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
