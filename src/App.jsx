@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase, fetchGastos, fetchIngresos, insertGasto, deleteGasto } from './supabase'
 import {
-  Home, Receipt, BarChart3, CalendarDays,
+  Home, Receipt, BarChart3, CalendarDays, PieChart as PieIcon,
   DollarSign, Landmark, Smartphone, Banknote, Bike, Zap,
   TrendingUp, TrendingDown, CheckCircle, AlertCircle,
   Camera, Mic, MicOff, Lock, Plus, Trash2, ArrowLeft,
   RefreshCw, ChevronRight, Edit3, CreditCard, Package,
-  X,
+  X, Lightbulb, Calendar,
 } from 'lucide-react'
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 
 // ─── Tokens de diseño — Andino Pop Brand ──────────────────────────────────────
 const T = {
@@ -592,12 +593,13 @@ function WaBtn({ onClick }) {
   )
 }
 
-// ─── Barra de navegación: 4 ítems simétricos ──────────────────────────────────
+// ─── Barra de navegación: 5 tabs ─────────────────────────────────────────────
 function BottomNav({ pantalla, go }) {
   const tabs = [
     { id:'home',      label:'Inicio',    Icon:Home        },
     { id:'gastos',    label:'Gastos',    Icon:Receipt     },
     { id:'cierre',    label:'Cierre',    Icon:BarChart3   },
+    { id:'metricas',  label:'Metricas',  Icon:PieIcon     },
     { id:'historial', label:'Historial', Icon:CalendarDays},
   ]
   return (
@@ -605,7 +607,7 @@ function BottomNav({ pantalla, go }) {
       position:'fixed', bottom:0, left:0, right:0,
       background:T.surface,
       boxShadow:T.shadowNav,
-      display:'grid', gridTemplateColumns:'repeat(4,1fr)',
+      display:'grid', gridTemplateColumns:'repeat(5,1fr)',
       zIndex:200, paddingBottom:'env(safe-area-inset-bottom,12px)',
     }}>
       {tabs.map(({ id, label, Icon }) => {
@@ -1916,6 +1918,158 @@ export default function App() {
 
         <BottomNav pantalla={pantalla} go={go}/>
         <Confetti active={confetti}/><Toast msg={toast}/>
+      </div>
+    )
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // METRICAS (tab)
+  // ══════════════════════════════════════════════════════════
+  if (pantalla === 'metricas') {
+    const PIE_COLORS = ['#FFB752','#5E405B','#2D6A4F','#FF7752','#7C3AED','#1D4ED8','#BE185D','#C2410C','#374151','#0891B2']
+
+    // Gastos por categoria
+    const catMap = {}
+    for (const g of dbGastos) {
+      const cat = g.categoria || 'Varios'
+      const usd = toUSD(g.monto, g.moneda, data.tasa)
+      catMap[cat] = (catMap[cat] || 0) + usd
+    }
+    const pieData = Object.entries(catMap)
+      .map(([name, value]) => ({ name, value: redondear(value) }))
+      .filter(d => d.value > 0)
+      .sort((a, b) => b.value - a.value)
+    const totalGastosDB = redondear(pieData.reduce((a, d) => a + d.value, 0))
+
+    // Balance real: ultimo cierre + ingresos hoy - gastos hoy
+    const hoyStr = hoy()
+    const ingresosHoy = dbIngresos.filter(i => i.fecha === hoyStr).reduce((a, i) => a + toUSD(i.monto, i.moneda, data.tasa), 0)
+    const gastosHoy = dbGastos.filter(g => g.fecha === hoyStr).reduce((a, g) => a + toUSD(g.monto, g.moneda, data.tasa), 0)
+    const totalIngDB = redondear(dbIngresos.reduce((a, i) => a + toUSD(i.monto, i.moneda, data.tasa), 0))
+    const balanceReal = redondear(totalIngDB - totalGastosDB)
+
+    // Dias pendientes esta semana
+    const ahora = new Date()
+    const lunes = new Date(ahora)
+    lunes.setDate(ahora.getDate() - ((ahora.getDay() + 6) % 7))
+    const diasSemana = []
+    for (let d = new Date(lunes); d <= ahora; d.setDate(d.getDate() + 1)) {
+      diasSemana.push(d.toISOString().slice(0, 10))
+    }
+    const diasConCierre = new Set(dbIngresos.map(i => i.fecha))
+    const diasPendientes = diasSemana.filter(d => !diasConCierre.has(d) && d !== hoyStr)
+
+    // Coach: analisis por dia de la semana
+    const diasNombre = ['Domingo','Lunes','Martes','Miercoles','Jueves','Viernes','Sabado']
+    const gastoPorDia = [0,0,0,0,0,0,0]
+    const conteoPorDia = [0,0,0,0,0,0,0]
+    for (const g of dbGastos) {
+      const d = new Date(g.fecha + 'T12:00:00')
+      const dow = d.getDay()
+      gastoPorDia[dow] += toUSD(g.monto, g.moneda, data.tasa)
+      conteoPorDia[dow]++
+    }
+    let maxDia = 0
+    for (let i = 1; i < 7; i++) { if (gastoPorDia[i] > gastoPorDia[maxDia]) maxDia = i }
+    const topCat = pieData[0]?.name || 'Insumos'
+    const topCatPct = totalGastosDB > 0 ? Math.round((pieData[0]?.value || 0) / totalGastosDB * 100) : 0
+
+    const consejos = [
+      `Los ${diasNombre[maxDia].toLowerCase()} son tu dia de mayor gasto (${fUSD(gastoPorDia[maxDia])} acumulado). Planifica con anticipacion.`,
+      `${topCat} representa el ${topCatPct}% de tus gastos totales. ${topCatPct > 40 ? 'Considera negociar con proveedores.' : 'Buen balance.'}`,
+      totalGastosDB > totalIngDB ? 'Los gastos superan los ingresos. Revisa los egresos no esenciales.' : 'Vas bien, los ingresos cubren los gastos.',
+    ]
+    const consejoIdx = Math.floor(Date.now() / 86400000) % consejos.length
+
+    return (
+      <div style={{minHeight:'100svh',background:T.bg,padding:'52px 20px 96px',overflowY:'auto'}}>
+        <h2 style={{fontSize:22,fontWeight:800,color:T.navy,letterSpacing:'-.025em',marginBottom:24}}>Metricas</h2>
+
+        {/* Balance real */}
+        <div style={{background:'linear-gradient(145deg,#3D2539,#5E405B)',borderRadius:28,padding:'26px 24px',marginBottom:16,boxShadow:'0 12px 40px rgba(94,64,91,0.18)'}}>
+          <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.45)',letterSpacing:'.1em'}}>BALANCE ACUMULADO</p>
+          <p style={{fontSize:38,fontWeight:900,color:'#fff',letterSpacing:'-.035em',lineHeight:1,marginTop:8}}>{fUSD(balanceReal)}</p>
+          <p style={{fontSize:12,color:'rgba(255,255,255,0.35)',marginTop:8}}>Ingresos {fUSD(totalIngDB)} - Gastos {fUSD(totalGastosDB)}</p>
+        </div>
+
+        {/* Dias pendientes */}
+        {diasPendientes.length > 0 && (
+          <Card style={{marginBottom:16,background:T.roseLight,border:`1px solid ${T.rose}22`}}>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <Calendar size={20} color={T.rose} strokeWidth={1.75}/>
+              <div>
+                <p style={{fontSize:14,fontWeight:700,color:T.rose}}>
+                  {diasPendientes.length === 1 ? 'Falta 1 dia' : `Faltan ${diasPendientes.length} dias`} por cerrar caja esta semana
+                </p>
+                <p style={{fontSize:12,color:T.sub,marginTop:2}}>{diasPendientes.map(d => fDate(d)).join(', ')}</p>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Grafico de torta */}
+        <Card style={{marginBottom:16,padding:'20px 16px'}}>
+          <Label>GASTOS POR CATEGORIA</Label>
+          {pieData.length > 0 ? (
+            <>
+              <div style={{height:220,marginBottom:8}}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={85} paddingAngle={3} stroke="none">
+                      {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]}/>)}
+                    </Pie>
+                    <Tooltip formatter={v => fUSD(v)} contentStyle={{borderRadius:12,border:'none',boxShadow:'0 4px 20px rgba(0,0,0,0.1)',fontSize:13,fontWeight:600}}/>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                {pieData.slice(0, 6).map((d, i) => {
+                  const pct = totalGastosDB > 0 ? Math.round(d.value / totalGastosDB * 100) : 0
+                  return (
+                    <div key={d.name} style={{display:'flex',alignItems:'center',gap:10}}>
+                      <div style={{width:10,height:10,borderRadius:3,background:PIE_COLORS[i % PIE_COLORS.length],flexShrink:0}}/>
+                      <span style={{fontSize:13,fontWeight:600,color:T.navy,flex:1}}>{d.name}</span>
+                      <span style={{fontSize:13,fontWeight:800,color:T.sub}}>{pct}%</span>
+                      <span style={{fontSize:13,fontWeight:700,color:T.navy}}>{fUSD(d.value)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          ) : (
+            <p style={{fontSize:14,color:T.muted,textAlign:'center',padding:'30px 0'}}>Sin datos de gastos aun</p>
+          )}
+        </Card>
+
+        {/* Coach financiero */}
+        <Card style={{marginBottom:16,background:`${T.brandGold}15`,border:`1px solid ${T.brandGold}30`}}>
+          <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+            <div style={{width:36,height:36,borderRadius:10,background:T.brandGold,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <Lightbulb size={18} color='#fff' strokeWidth={1.75}/>
+            </div>
+            <div>
+              <p style={{fontSize:11,fontWeight:700,color:T.brandGold,letterSpacing:'.06em',marginBottom:6}}>CONSEJO DE ANDINO</p>
+              <p style={{fontSize:14,fontWeight:600,color:T.navy,lineHeight:1.5}}>{consejos[consejoIdx]}</p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Resumen numerico */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <Card style={{padding:'16px',textAlign:'center'}}>
+            <p style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:'.06em'}}>REGISTROS</p>
+            <p style={{fontSize:24,fontWeight:900,color:T.navy,marginTop:4}}>{dbGastos.length + dbIngresos.length}</p>
+            <p style={{fontSize:11,color:T.muted,marginTop:2}}>{dbGastos.length}G · {dbIngresos.length}I</p>
+          </Card>
+          <Card style={{padding:'16px',textAlign:'center'}}>
+            <p style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:'.06em'}}>CATEGORIAS</p>
+            <p style={{fontSize:24,fontWeight:900,color:T.navy,marginTop:4}}>{pieData.length}</p>
+            <p style={{fontSize:11,color:T.muted,marginTop:2}}>Top: {topCat}</p>
+          </Card>
+        </div>
+
+        <BottomNav pantalla={pantalla} go={go}/>
+        <Toast msg={toast}/>
       </div>
     )
   }
