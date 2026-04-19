@@ -592,6 +592,8 @@ export default function App() {
   const [historial,  setHistorial]  = useState([])
   const [histItem,   setHistItem]   = useState(null) // detalle de un día histórico
   const [procesandoVoz, setProcesandoVoz] = useState(false)
+  const [liveTranscript, setLiveTranscript] = useState('')
+  const [transcriptFinal, setTranscriptFinal] = useState('')
 
   const fileRef = useRef(null)
   const srRef   = useRef(null)
@@ -771,11 +773,11 @@ export default function App() {
       const sr     = new SR()
       sr.lang      = 'es-VE'
       sr.continuous      = true
-      sr.interimResults  = false
+      sr.interimResults  = true  // live transcript
 
-      let transcriptAcum  = ''
-      let silenceTimer    = null
-      const SILENCE_MS    = 5000   // 5 s de silencio para cerrar
+      let finalParts   = []
+      let silenceTimer = null
+      const SILENCE_MS = 5000
 
       const resetSilence = () => {
         clearTimeout(silenceTimer)
@@ -786,28 +788,42 @@ export default function App() {
 
       sr.onstart = () => {
         setCampoVoz(campo)
-        showToast('Escuchando... habla con calma')
+        setLiveTranscript('')
+        setTranscriptFinal('')
+        finalParts = []
         resetSilence()
       }
 
       sr.onresult = e => {
         resetSilence()
-        for (let i = e.resultIndex; i < e.results.length; i++) {
+        let interim = ''
+        for (let i = 0; i < e.results.length; i++) {
+          const txt = e.results[i][0].transcript
           if (e.results[i].isFinal) {
-            transcriptAcum += ' ' + e.results[i][0].transcript
-            showToast(`"${e.results[i][0].transcript}"`)
+            // Solo agregar si no está ya en finalParts
+            if (!finalParts.includes(txt)) finalParts.push(txt)
+          } else {
+            interim += txt
           }
         }
+        const full = finalParts.join(' ') + (interim ? ' ' + interim : '')
+        setLiveTranscript(full.trim())
       }
 
       sr.onend = async () => {
         clearTimeout(silenceTimer)
         setCampoVoz(null)
         srRef.current = null
-        const txt = transcriptAcum.trim()
-        if (!txt) { setProcesandoVoz(false); return }
+        const txt = finalParts.join(' ').trim()
+        if (!txt) { setLiveTranscript(''); setProcesandoVoz(false); return }
+
+        // Mostrar texto final 1.5s antes de procesar
+        setTranscriptFinal(txt)
+        setLiveTranscript('')
+        await new Promise(r => setTimeout(r, 1500))
 
         setProcesandoVoz(true)
+        setTranscriptFinal('')
         try {
           if (OPENROUTER_KEY) {
             const items = await procesarGastoConIA(txt, data.tasa)
@@ -826,7 +842,6 @@ export default function App() {
               showToast('La IA no pudo interpretar. Intenta de nuevo.')
             }
           } else {
-            // Fallback: parser local sin IA
             const items = parsearVozMultiple(txt, data.tasa)
             if (items.length > 0) {
               setPendGastos(items); go('confirmarVoz')
@@ -854,6 +869,8 @@ export default function App() {
         clearTimeout(silenceTimer)
         setCampoVoz(null)
         setProcesandoVoz(false)
+        setLiveTranscript('')
+        setTranscriptFinal('')
         srRef.current = null
         const errMap = {
           'not-allowed': 'Permiso de microfono denegado. Activa el microfono en ajustes.',
@@ -876,6 +893,32 @@ export default function App() {
       }
       return
     }
+  }
+
+  function finalizarVoz() {
+    if (srRef.current) { try { srRef.current.stop() } catch {} }
+  }
+
+  function cancelarVoz() {
+    if (srRef.current) {
+      srRef.current.onend = () => {}  // desactivar procesamiento
+      try { srRef.current.stop() } catch {}
+    }
+    srRef.current = null
+    setCampoVoz(null)
+    setProcesandoVoz(false)
+    setLiveTranscript('')
+    setTranscriptFinal('')
+    showToast('Dictado cancelado')
+  }
+
+  function iniciarVozSimple(campo) {
+    if (!SR) { showToast('Este navegador no soporta dictado por voz. Usa Chrome.'); return }
+    if (campoVoz === campo) {
+      if (srRef.current) { try { srRef.current.stop() } catch {} }
+      setCampoVoz(null); return
+    }
+    if (srRef.current) { try { srRef.current.stop() } catch {} }
 
     // ── Modo SIMPLE para campos individuales ─────────────────────────────────
     const sr = new SR(); sr.lang = 'es-VE'; sr.interimResults = false
@@ -1150,7 +1193,7 @@ export default function App() {
   if (pantalla === 'ingresos') {
     const mic=c=>campoVoz===`ing:${c}`
     const row=(campo,label,Icon,moneda='BS',dimmed=false)=>(
-      <CampoMonto label={label} value={ing[campo]} onChange={v=>setIngreso(campo,v)} moneda={moneda} icon={Icon} micActive={mic(campo)} onMic={()=>iniciarVoz(`ing:${campo}`)} dimmed={dimmed}/>
+      <CampoMonto label={label} value={ing[campo]} onChange={v=>setIngreso(campo,v)} moneda={moneda} icon={Icon} micActive={mic(campo)} onMic={()=>iniciarVozSimple(`ing:${campo}`)} dimmed={dimmed}/>
     )
     return (
       <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 40px',overflowY:'auto'}}>
@@ -1218,30 +1261,72 @@ export default function App() {
       <InnerHeader title="Nuevo Gasto" onBack={()=>go('gastos')}/>
 
       {/* Dictado múltiple */}
-      <Card style={{marginBottom:20,background:campoVoz==='g:multiple'?T.roseLight:T.cobaltLight,border:`1px solid ${campoVoz==='g:multiple'?T.rose:T.cobalt}22`,transition:'background .2s'}}>
-        <Label>DICTADO RAPIDO</Label>
-        {procesandoVoz ? (
-          <div style={{display:'flex',alignItems:'center',gap:10,padding:'12px 0'}}>
-            <RefreshCw size={18} color={T.cobalt} strokeWidth={1.75} style={{animation:'spin 1s linear infinite'}}/>
-            <p style={{fontSize:14,fontWeight:700,color:T.cobalt}}>Procesando con IA...</p>
-          </div>
-        ) : campoVoz === 'g:multiple' ? (
-          <div style={{marginBottom:12}}>
-            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-              <div style={{width:10,height:10,borderRadius:5,background:T.rose,animation:'pulse 1.2s infinite'}}/>
-              <p style={{fontSize:14,fontWeight:700,color:T.rose}}>Escuchando...</p>
+      <Card style={{marginBottom:20,background:campoVoz==='g:multiple'?'#0F172A':procesandoVoz?T.cobaltLight:transcriptFinal?T.forestLight:T.cobaltLight,border:`1px solid ${campoVoz==='g:multiple'?'rgba(255,255,255,0.1)':T.cobalt}22`,transition:'all .3s'}}>
+
+        {/* ── Estado: Grabando ── */}
+        {campoVoz === 'g:multiple' ? (
+          <>
+            {/* Ondas de audio */}
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:3,height:40,marginBottom:16}}>
+              {[0,1,2,3,4,5,6].map(i => (
+                <div key={i} style={{width:4,borderRadius:2,background:'#EF4444',animation:`wave .8s ${i*0.1}s ease-in-out infinite alternate`}}/>
+              ))}
             </div>
-            <p style={{fontSize:12,color:T.sub,lineHeight:1.5}}>Habla con calma. Se detiene automaticamente tras 5 segundos de silencio.</p>
+
+            {/* Live transcript */}
+            <p style={{fontSize:liveTranscript.length>60?16:20,fontWeight:700,color:'#fff',textAlign:'center',minHeight:60,lineHeight:1.4,marginBottom:16,wordBreak:'break-word'}}>
+              {liveTranscript || 'Escuchando...'}
+            </p>
+
+            <p style={{fontSize:11,color:'rgba(255,255,255,0.4)',textAlign:'center',marginBottom:16}}>5 segundos de silencio para enviar automaticamente</p>
+
+            {/* Botones: Listo + Cancelar */}
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={cancelarVoz} style={{flex:1,padding:'14px',borderRadius:14,border:'1px solid rgba(255,255,255,0.15)',background:'transparent',fontSize:13,fontWeight:700,color:'rgba(255,255,255,0.5)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+                <X size={15} strokeWidth={1.75}/>Cancelar
+              </button>
+              <button onClick={finalizarVoz} style={{flex:2,padding:'14px',borderRadius:14,border:'none',background:T.forest,fontSize:14,fontWeight:800,color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,boxShadow:'0 4px 0 #1B4332'}}>
+                <Zap size={16} strokeWidth={1.75}/>Listo, procesar
+              </button>
+            </div>
+          </>
+
+        /* ── Estado: Mostrando texto final antes de IA ── */
+        ) : transcriptFinal ? (
+          <>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+              <CheckCircle size={16} color={T.forest} strokeWidth={1.75}/>
+              <p style={{fontSize:12,fontWeight:700,color:T.forest,letterSpacing:'.06em'}}>TEXTO CAPTURADO</p>
+            </div>
+            <p style={{fontSize:17,fontWeight:700,color:T.navy,lineHeight:1.5,marginBottom:8}}>{transcriptFinal}</p>
+            <p style={{fontSize:12,color:T.muted}}>Enviando a la IA...</p>
+          </>
+
+        /* ── Estado: Procesando con IA ── */
+        ) : procesandoVoz ? (
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12,padding:'16px 0'}}>
+            <RefreshCw size={24} color={T.cobalt} strokeWidth={1.75} style={{animation:'spin 1s linear infinite'}}/>
+            <p style={{fontSize:15,fontWeight:700,color:T.cobalt}}>Procesando con IA...</p>
+            <p style={{fontSize:12,color:T.muted}}>Extrayendo gastos del dictado</p>
           </div>
+
+        /* ── Estado: Reposo ── */
         ) : (
-          <p style={{fontSize:13,color:T.sub,marginBottom:12,lineHeight:1.5}}>
-            Ej: <em>"20 dolares de Queso Agropecuaria en categoria Sueldos"</em>
-          </p>
+          <>
+            <Label>DICTADO RAPIDO</Label>
+            <p style={{fontSize:13,color:T.sub,marginBottom:14,lineHeight:1.5}}>
+              Dicta tus gastos y la IA los separa automaticamente
+            </p>
+            <Btn onClick={()=>iniciarVoz('g:multiple')} bg={T.cobalt} full icon={Mic} style={{fontSize:14,padding:'16px'}}>
+              Iniciar dictado por voz
+            </Btn>
+          </>
         )}
-        <Btn onClick={()=>iniciarVoz('g:multiple')} bg={campoVoz==='g:multiple'?T.rose:T.cobalt} full icon={campoVoz==='g:multiple'?MicOff:Mic} style={{fontSize:13}} disabled={procesandoVoz}>
-          {campoVoz==='g:multiple'?'Detener grabacion':'Dictar gastos por voz'}
-        </Btn>
-        <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}`}</style>
+
+        <style>{`
+          @keyframes wave{0%{height:6px}100%{height:28px}}
+          @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        `}</style>
       </Card>
 
       <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20}}>
@@ -1264,7 +1349,7 @@ export default function App() {
         <div style={{display:'flex',gap:8}}>
           <input type="text" value={gasto.concepto} onChange={e=>setGasto(g=>({...g,concepto:e.target.value}))} placeholder="ej: Queso Omar, Harina PAN..."
             style={{flex:1,height:48,paddingLeft:14,fontSize:15,fontWeight:600,border:`1.5px solid ${T.border}`,borderRadius:12,outline:'none',color:T.navy,background:T.bg}}/>
-          <button onClick={()=>iniciarVoz('g:concepto')} style={{width:48,height:48,borderRadius:12,border:'none',flexShrink:0,background:campoVoz==='g:concepto'?T.roseLight:T.cobaltLight,color:campoVoz==='g:concepto'?T.rose:T.cobalt,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
+          <button onClick={()=>iniciarVozSimple('g:concepto')} style={{width:48,height:48,borderRadius:12,border:'none',flexShrink:0,background:campoVoz==='g:concepto'?T.roseLight:T.cobaltLight,color:campoVoz==='g:concepto'?T.rose:T.cobalt,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
             {campoVoz==='g:concepto'?<MicOff size={17} strokeWidth={1.75}/>:<Mic size={17} strokeWidth={1.75}/>}
           </button>
         </div>
@@ -1281,7 +1366,7 @@ export default function App() {
 
       <Label>MONTO</Label>
       <Card style={{marginBottom:28}}>
-        <CampoMonto label={gasto.moneda==='USD'?'Dólares':'Bolívares'} value={gasto.monto} onChange={v=>setGasto(g=>({...g,monto:v}))} moneda={gasto.moneda} micActive={campoVoz==='g:monto'} onMic={()=>iniciarVoz('g:monto')} icon={Banknote}/>
+        <CampoMonto label={gasto.moneda==='USD'?'Dólares':'Bolívares'} value={gasto.monto} onChange={v=>setGasto(g=>({...g,monto:v}))} moneda={gasto.moneda} micActive={campoVoz==='g:monto'} onMic={()=>iniciarVozSimple('g:monto')} icon={Banknote}/>
       </Card>
 
       <Btn onClick={()=>agregarGasto(false)} bg={T.forest} full icon={CheckCircle} style={{padding:'16px',fontSize:15}}>Guardar Gasto</Btn>
