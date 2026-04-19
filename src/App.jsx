@@ -126,7 +126,7 @@ async function procesarFotoConIA(file) {
       'Authorization': `Bearer ${OPENROUTER_KEY}`,
     },
     body: JSON.stringify({
-      model: 'google/gemini-flash-1.5',
+      model: 'google/gemini-3-flash-preview',
       messages: [
         { role: 'system', content: OCR_SYSTEM },
         { role: 'user', content: [
@@ -345,7 +345,7 @@ async function procesarGastoConIA(texto, tasa) {
       'Authorization': `Bearer ${OPENROUTER_KEY}`,
     },
     body: JSON.stringify({
-      model: 'google/gemini-flash-1.5',
+      model: 'google/gemini-3-flash-preview',
       messages: [
         { role: 'system', content: prompt },
         { role: 'user', content: texto },
