@@ -681,6 +681,7 @@ export default function App() {
   const [transcriptFinal, setTranscriptFinal] = useState('')
   const [editingIdx, setEditingIdx] = useState(null)
   const [fechaCierre, setFechaCierre] = useState(hoy())
+  const [tasaEditing, setTasaEditing] = useState(false)
   const [dbGastos,   setDbGastos]   = useState([])
   const [dbIngresos, setDbIngresos] = useState([])
   const [dbLoaded,   setDbLoaded]   = useState(false)
@@ -738,29 +739,47 @@ export default function App() {
     setPantalla('home')
   }, [])
 
+  function applyTasa(t) {
+    setTasaTemp(String(t))
+    localStorage.setItem('CP_TASA', String(t))
+    if (data) {
+      const nueva = { ...data, tasa: t }
+      setData(nueva); guardarData(nueva)
+    }
+  }
+
   function refetchBCV() {
     setBcvLoad(true)
+    setTasaEditing(false)
     fetchTasaBCV().then(t => {
       if (t) {
-        setTasaTemp(String(t))
-        localStorage.setItem('CP_TASA', String(t))
-        if (data) {
-          const nueva = { ...data, tasa: t }
-          setData(nueva); guardarData(nueva)
-        }
+        applyTasa(t)
         showToast(`Tasa actualizada: Bs ${t}`)
-      } else showToast('Sin conexion al BCV')
+      } else {
+        showToast('BCV no respondio. Toca la tasa para editarla manual.', 4000)
+        setTasaEditing(true)
+      }
+      setBcvLoad(false)
+    }).catch(() => {
+      showToast('Error de conexion. Toca la tasa para editarla.', 4000)
+      setTasaEditing(true)
       setBcvLoad(false)
     })
+  }
+
+  function saveTasaManual() {
+    const t = parseFloat(tasaTemp.replace(',', '.'))
+    if (!t || t < 10 || t > 9999) { showToast('Tasa invalida'); return }
+    applyTasa(t)
+    setTasaEditing(false)
+    showToast(`Tasa guardada: Bs ${t}`)
   }
 
   // ── Helpers de estado ────────────────────────────────────────────────────────
   function confirmarTasa() {
     const t = parseFloat(tasaTemp.replace(',','.'))
     if (!t||t<50||t>5000) { showToast('Tasa invalida'); return }
-    const nueva = {...data, tasa:t}
-    setData(nueva); guardarData(nueva)
-    localStorage.setItem('CP_TASA', String(t))
+    applyTasa(t)
     go('home')
   }
 
@@ -1859,14 +1878,33 @@ export default function App() {
         {/* Acciones terciarias: WA + Tasa */}
         <div style={{display:'flex',alignItems:'center',gap:8,marginTop:2}}>
           <WaBtn onClick={()=>enviarResumen()}/>
-          <div style={{display:'flex',alignItems:'center',gap:6,background:T.amberLight,border:`1px solid ${T.brandGold}33`,borderRadius:13,padding:'7px 12px'}}>
-            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1}}>
-              <span style={{fontSize:9,fontWeight:700,color:T.brand,letterSpacing:'.08em'}}>TASA</span>
-              <span style={{fontSize:18,fontWeight:900,color:T.brand,letterSpacing:'-.02em'}}>Bs {data.tasa}</span>
-            </div>
-            <button onClick={refetchBCV} disabled={bcvLoad} style={{width:28,height:28,borderRadius:8,border:'none',background:'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
-              <RefreshCw size={14} color={T.brand} strokeWidth={1.75} style={{animation:bcvLoad?'spin 1s linear infinite':'none'}}/>
-            </button>
+          <div style={{display:'flex',alignItems:'center',gap:6,background:T.amberLight,border:`1px solid ${T.brandGold}33`,borderRadius:13,padding:'7px 10px'}}>
+            {tasaEditing ? (
+              <div style={{display:'flex',alignItems:'center',gap:4}}>
+                <span style={{fontSize:11,fontWeight:700,color:T.brand}}>Bs</span>
+                <input type="number" inputMode="decimal" value={tasaTemp}
+                  onChange={e => setTasaTemp(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && saveTasaManual()}
+                  autoFocus
+                  style={{width:70,height:30,fontSize:16,fontWeight:900,color:T.brand,background:'transparent',border:`1.5px solid ${T.brandGold}`,borderRadius:8,padding:'0 6px',outline:'none',textAlign:'right'}}
+                />
+                <button onClick={saveTasaManual} style={{width:28,height:28,borderRadius:8,border:'none',background:T.brandGold,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <CheckCircle size={14} color='#fff' strokeWidth={2}/>
+                </button>
+              </div>
+            ) : (
+              <>
+                <button onClick={() => setTasaEditing(true)} style={{background:'none',border:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:1,WebkitTapHighlightColor:'transparent',padding:0}}>
+                  <span style={{fontSize:9,fontWeight:700,color:T.brand,letterSpacing:'.08em'}}>TASA</span>
+                  <span style={{fontSize:18,fontWeight:900,color:T.brand,letterSpacing:'-.02em'}}>
+                    {bcvLoad ? '...' : `Bs ${data.tasa}`}
+                  </span>
+                </button>
+                <button onClick={refetchBCV} style={{width:28,height:28,borderRadius:8,border:'none',background:'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
+                  <RefreshCw size={14} color={T.brand} strokeWidth={1.75} style={{animation:bcvLoad?'spin 1s linear infinite':'none'}}/>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
