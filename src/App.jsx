@@ -139,8 +139,20 @@ async function procesarFotoConIA(file) {
     }),
   })
 
+  if (!resp.ok) {
+    const errBody = await resp.text().catch(() => '')
+    console.error('OpenRouter OCR error:', resp.status, errBody)
+    throw new Error(`${resp.status} ${errBody.slice(0, 100)}`)
+  }
+
   const json = await resp.json()
+  if (json.error) {
+    console.error('OpenRouter OCR response error:', json.error)
+    throw new Error(json.error.message || JSON.stringify(json.error))
+  }
+
   const raw = json.choices?.[0]?.message?.content || '{}'
+  console.log('OCR IA response:', raw)
   const match = raw.match(/\{[\s\S]*\}/)
   return match ? JSON.parse(match[0]) : null
 }
@@ -342,8 +354,21 @@ async function procesarGastoConIA(texto, tasa) {
       temperature: 0,
     }),
   })
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '')
+    console.error('OpenRouter API error:', res.status, errBody)
+    throw new Error(`${res.status} ${errBody.slice(0, 100)}`)
+  }
+
   const json = await res.json()
+  if (json.error) {
+    console.error('OpenRouter response error:', json.error)
+    throw new Error(json.error.message || JSON.stringify(json.error))
+  }
+
   const raw = json.choices?.[0]?.message?.content || '[]'
+  console.log('IA response:', raw)
   const match = raw.match(/\[[\s\S]*\]/)
   return match ? JSON.parse(match[0]) : []
 }
@@ -682,7 +707,17 @@ export default function App() {
         cierreTotal: resultado.cierre_total || 0,
       })
       go('validarOCR')
-    } catch { showToast('Error al procesar la foto'); go('ingresos') }
+    } catch (err) {
+      console.error('Error procesando foto:', err)
+      const msg = err?.message || String(err)
+      if (msg.includes('402') || msg.includes('credit'))
+        showToast('Sin creditos en OpenRouter. Recarga tu cuenta.')
+      else if (msg.includes('401'))
+        showToast('API key invalida. Revisa VITE_OPENROUTER_KEY.')
+      else
+        showToast(`Error: ${msg.slice(0, 60)}`)
+      go('ingresos')
+    }
   }
 
   function aplicarOCR(cerrar = false) {
@@ -707,14 +742,14 @@ export default function App() {
 
   // ── Voz ───────────────────────────────────────────────────────────────────────
   function iniciarVoz(campo) {
-    if (!SR) { showToast('Tu teléfono no soporta dictado'); return }
+    if (!SR) { showToast('Este navegador no soporta dictado por voz. Usa Chrome.'); return }
 
     // Si ya escucha ese campo → detener
     if (campoVoz === campo) {
-      if (srRef.current) srRef.current.stop()
-      setCampoVoz(null); return
+      if (srRef.current) { try { srRef.current.stop() } catch {} }
+      setCampoVoz(null); setProcesandoVoz(false); return
     }
-    if (srRef.current) srRef.current.stop()
+    if (srRef.current) { try { srRef.current.stop() } catch {} }
 
     // ── Modo CONTINUO para gastos múltiples ──────────────────────────────────
     if (campo === 'g:multiple') {
@@ -729,25 +764,37 @@ export default function App() {
 
       const resetSilence = () => {
         clearTimeout(silenceTimer)
-        silenceTimer = setTimeout(() => sr.stop(), SILENCE_MS)
+        silenceTimer = setTimeout(() => {
+          try { sr.stop() } catch {}
+        }, SILENCE_MS)
       }
 
-      sr.onstart  = () => resetSilence()
+      sr.onstart = () => {
+        setCampoVoz(campo)
+        showToast('Escuchando... habla con calma')
+        resetSilence()
+      }
+
       sr.onresult = e => {
         resetSilence()
         for (let i = e.resultIndex; i < e.results.length; i++) {
-          if (e.results[i].isFinal) transcriptAcum += ' ' + e.results[i][0].transcript
+          if (e.results[i].isFinal) {
+            transcriptAcum += ' ' + e.results[i][0].transcript
+            showToast(`"${e.results[i][0].transcript}"`)
+          }
         }
       }
+
       sr.onend = async () => {
         clearTimeout(silenceTimer)
         setCampoVoz(null)
+        srRef.current = null
         const txt = transcriptAcum.trim()
-        if (!txt) return
+        if (!txt) { setProcesandoVoz(false); return }
 
         setProcesandoVoz(true)
-        if (OPENROUTER_KEY) {
-          try {
+        try {
+          if (OPENROUTER_KEY) {
             const items = await procesarGastoConIA(txt, data.tasa)
             if (items.length > 0) {
               const mapped = items.map((item, i) => ({
@@ -761,33 +808,66 @@ export default function App() {
               setPendGastos(mapped); go('confirmarVoz')
               showToast(`${mapped.length} gasto(s) detectado(s)`)
             } else {
-              showToast('La IA no pudo interpretar — intenta de nuevo')
+              showToast('La IA no pudo interpretar. Intenta de nuevo.')
             }
-          } catch {
-            showToast('Error conectando con la IA')
-          }
-        } else {
-          const items = parsearVozMultiple(txt, data.tasa)
-          if (items.length > 0) {
-            setPendGastos(items); go('confirmarVoz')
-            showToast(`${items.length} gasto(s) detectado(s)`)
           } else {
-            showToast('No entendi — intenta de nuevo')
+            // Fallback: parser local sin IA
+            const items = parsearVozMultiple(txt, data.tasa)
+            if (items.length > 0) {
+              setPendGastos(items); go('confirmarVoz')
+              showToast(`${items.length} gasto(s) detectado(s)`)
+            } else {
+              showToast('No entendi. Intenta de nuevo.')
+            }
           }
+        } catch (err) {
+          const msg = err?.message || String(err)
+          console.error('Error procesando voz:', err)
+          if (msg.includes('402') || msg.includes('credit'))
+            showToast('Sin creditos en OpenRouter. Recarga tu cuenta.')
+          else if (msg.includes('401') || msg.includes('auth'))
+            showToast('API key invalida. Revisa VITE_OPENROUTER_KEY.')
+          else if (msg.includes('429'))
+            showToast('Demasiadas peticiones. Espera un momento.')
+          else
+            showToast(`Error: ${msg.slice(0, 80)}`)
         }
         setProcesandoVoz(false)
       }
-      sr.onerror = () => { clearTimeout(silenceTimer); setCampoVoz(null) }
-      srRef.current = sr; sr.start(); setCampoVoz(campo)
+
+      sr.onerror = (e) => {
+        clearTimeout(silenceTimer)
+        setCampoVoz(null)
+        setProcesandoVoz(false)
+        srRef.current = null
+        const errMap = {
+          'not-allowed': 'Permiso de microfono denegado. Activa el microfono en ajustes.',
+          'no-speech': 'No detecte voz. Intenta de nuevo.',
+          'audio-capture': 'No se encontro microfono.',
+          'network': 'Error de red. Verifica tu conexion.',
+        }
+        showToast(errMap[e.error] || `Error de voz: ${e.error}`)
+        console.error('SpeechRecognition error:', e.error)
+      }
+
+      srRef.current = sr
+      try {
+        sr.start()
+      } catch (err) {
+        setCampoVoz(null)
+        setProcesandoVoz(false)
+        showToast('No se pudo iniciar el microfono')
+        console.error('sr.start() failed:', err)
+      }
       return
     }
 
     // ── Modo SIMPLE para campos individuales ─────────────────────────────────
     const sr = new SR(); sr.lang = 'es-VE'; sr.interimResults = false
+    sr.onstart = () => setCampoVoz(campo)
     sr.onresult = e => {
       const txt = e.results[0][0].transcript
       if (campo.startsWith('ing:')) {
-        // Para ingresos: extraer número con soporte de "mil"
         const tokens = txt.toLowerCase().split(/\s+/)
         const numR   = extraerNumero(tokens)
         if (numR) setIngreso(campo.slice(4), String(numR.amount))
@@ -801,8 +881,13 @@ export default function App() {
         setGasto(g => ({ ...g, concepto: txt })); showToast(`"${txt}"`)
       }
     }
-    sr.onerror = sr.onend = () => setCampoVoz(null)
-    srRef.current = sr; sr.start(); setCampoVoz(campo)
+    sr.onerror = (e) => {
+      setCampoVoz(null)
+      if (e.error !== 'no-speech') showToast(`Error: ${e.error}`)
+    }
+    sr.onend = () => setCampoVoz(null)
+    srRef.current = sr
+    try { sr.start() } catch { showToast('No se pudo iniciar el microfono') }
   }
 
   // ── WhatsApp ──────────────────────────────────────────────────────────────────
