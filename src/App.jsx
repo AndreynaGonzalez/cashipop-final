@@ -2044,17 +2044,27 @@ export default function App() {
   // CIERRE (tab)
   // ══════════════════════════════════════════════════════════
   if (pantalla === 'cierre') {
-    // ── Derivar estado del cierre desde Supabase para la fecha seleccionada ──
-    const cierreIng = dbIngresos.filter(i => i.fecha === fechaCierre)
-    const cierreGas = dbGastos.filter(g => g.fecha === fechaCierre)
-    const cierreTotalIng = redondear(cierreIng.reduce((a, i) => a + toUSD(i.monto, i.moneda, data.tasa), 0))
-    const cierreTotalGas = redondear(cierreGas.reduce((a, g) => a + toUSD(g.monto, g.moneda, data.tasa), 0))
-    const cierreNeto = redondear(cierreTotalIng - cierreTotalGas)
-    const tieneCierre = cierreIng.length > 0
     const esHoy = fechaCierre === hoy()
-    // Para el formulario local, usamos data.ingresos solo si es hoy
+
+    // ── Supabase data para la fecha ──
+    const cierreIngDB = dbIngresos.filter(i => i.fecha === fechaCierre)
+    const cierreGasDB = dbGastos.filter(g => g.fecha === fechaCierre)
+    const tieneCierreDB = cierreIngDB.length > 0
+
+    // ── Sumatoria en tiempo real del formulario local (solo hoy) ──
+    const localIngTotal = esHoy ? totalUSD(ing, data.tasa) : 0
+    const localGasTotal = esHoy ? totalGastosUSD(data.gastos, data.tasa) : 0
     const tieneIngresosLocal = esHoy && Object.values(ing).some(v => n(v) > 0)
-    const cajaCerrada = esHoy ? data.cerrada : tieneCierre
+
+    // ── Totales: usa local si es hoy y hay datos del form, sino Supabase ──
+    const cierreTotalIng = (esHoy && tieneIngresosLocal)
+      ? redondear(localIngTotal)
+      : redondear(cierreIngDB.reduce((a, i) => a + toUSD(i.monto, i.moneda, data.tasa), 0))
+    const cierreTotalGas = esHoy
+      ? redondear(localGasTotal + cierreGasDB.reduce((a, g) => a + toUSD(g.monto, g.moneda, data.tasa), 0))
+      : redondear(cierreGasDB.reduce((a, g) => a + toUSD(g.monto, g.moneda, data.tasa), 0))
+    const cierreNeto = redondear(cierreTotalIng - cierreTotalGas)
+    const cajaCerrada = esHoy ? data.cerrada : tieneCierreDB
 
     // Mapeo de ingresos de Supabase para mostrar lineas
     const cierreLineas = [
@@ -2071,7 +2081,7 @@ export default function App() {
       { concepto:'Divisas', Icon:DollarSign, moneda:'USD' },
       { concepto:'Cuentas Por Cobrar', Icon:AlertCircle, moneda:'USD' },
     ].map(l => {
-      const row = cierreIng.find(i => i.concepto === l.concepto)
+      const row = cierreIngDB.find(i => i.concepto === l.concepto)
       return row ? { ...l, monto: row.monto, id: row.id } : null
     }).filter(Boolean)
 
@@ -2095,7 +2105,7 @@ export default function App() {
         )}
 
         {/* Entrada dual: Foto o Manual (solo si no hay cierre y es editable) */}
-        {!tieneCierre && !tieneIngresosLocal && (
+        {!tieneCierreDB && !tieneIngresosLocal && (
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
             <button onClick={()=>cierreFileRef.current?.click()} style={{
               background:T.brandGold,color:T.brand,border:'none',borderRadius:20,padding:'20px 12px',
@@ -2140,14 +2150,16 @@ export default function App() {
             </div>
           </div>
           <div style={{borderTop:'1px solid rgba(255,255,255,0.1)',paddingTop:18,marginTop:18}}>
-            <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'.08em'}}>NETO</p>
-            <p style={{fontSize:42,fontWeight:900,color:'#fff',letterSpacing:'-.035em',lineHeight:1.1,marginTop:8}}>{fUSD(cierreNeto)}</p>
+            <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'.08em'}}>
+              {cierreNeto >= 0 ? 'GANANCIA' : 'PERDIDA'}
+            </p>
+            <p style={{fontSize:42,fontWeight:900,color:cierreNeto>=0?'#6EE7B7':'#FCA5A5',letterSpacing:'-.035em',lineHeight:1.1,marginTop:8}}>{fUSD(cierreNeto)}</p>
           </div>
         </div>
 
         {/* Boton editar si hay cierre o datos locales */}
-        {(tieneCierre || tieneIngresosLocal) && !cajaCerrada && (
-          <Btn onClick={()=>{if(!esHoy)editarCierreHistorico(fechaCierre,cierreIng);else go('ingresos')}} bg={T.cobaltLight} color={T.brand} full icon={Edit3} style={{marginBottom:18,padding:'13px',fontSize:13,boxShadow:'none'}}>
+        {(tieneCierreDB || tieneIngresosLocal) && !cajaCerrada && (
+          <Btn onClick={()=>{if(!esHoy)editarCierreHistorico(fechaCierre,cierreIngDB);else go('ingresos')}} bg={T.cobaltLight} color={T.brand} full icon={Edit3} style={{marginBottom:18,padding:'13px',fontSize:13,boxShadow:'none'}}>
             Editar ingresos del cierre
           </Btn>
         )}
@@ -2182,11 +2194,11 @@ export default function App() {
         )}
 
         {/* Desglose de gastos desde Supabase */}
-        {cierreGas.length > 0 && (
+        {cierreGasDB.length > 0 && (
           <>
             <Label>GASTOS DEL DIA</Label>
             <Card style={{marginBottom:22,borderRadius:28}}>
-              {cierreGas.map((g, i) => (
+              {cierreGasDB.map((g, i) => (
                 <div key={g.id}>
                   {i > 0 && <Sep/>}
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -2203,7 +2215,7 @@ export default function App() {
         )}
 
         {/* Sin datos */}
-        {!tieneCierre && !tieneIngresosLocal && cierreGas.length === 0 && (
+        {!tieneCierreDB && !tieneIngresosLocal && cierreGasDB.length === 0 && (
           <Card style={{textAlign:'center',padding:40,borderRadius:28,marginBottom:18}}>
             <BarChart3 size={30} color={T.muted} strokeWidth={1.5} style={{margin:'0 auto'}}/>
             <p style={{fontSize:15,fontWeight:700,color:T.navy,marginTop:12}}>Sin datos para {fDate(fechaCierre)}</p>
@@ -2228,7 +2240,7 @@ export default function App() {
               </button>
             )}
             {!esHoy && (
-              <Btn onClick={()=>editarCierreHistorico(fechaCierre,cierreIng)} bg={T.cobaltLight} color={T.brand} full icon={Edit3} style={{padding:'13px',fontSize:13,boxShadow:'none'}}>
+              <Btn onClick={()=>editarCierreHistorico(fechaCierre,cierreIngDB)} bg={T.cobaltLight} color={T.brand} full icon={Edit3} style={{padding:'13px',fontSize:13,boxShadow:'none'}}>
                 Editar cierre de {fDate(fechaCierre)}
               </Btn>
             )}
