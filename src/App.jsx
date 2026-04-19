@@ -423,19 +423,21 @@ function Toast({ msg }) {
   )
 }
 
-function Confirm({ msg, onYes, onNo }) {
-  if (!msg) return null
+function Confirm({ title, msg, children, onYes, onNo, yesLabel='Confirmar', noLabel='Cancelar', yesColor=T.forest, icon:ConfIcon=AlertCircle, iconColor=T.amber }) {
+  if (!msg && !children) return null
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.35)',zIndex:9990,display:'flex',alignItems:'flex-end',padding:'0 16px 28px'}}>
       <div style={{background:T.surface,borderRadius:28,padding:'28px 24px',width:'100%',boxShadow:'0 -8px 40px rgba(0,0,0,0.12)'}}>
-        <AlertCircle size={26} color={T.amber} strokeWidth={1.75} style={{margin:'0 auto 14px',display:'block'}}/>
-        <p style={{fontSize:16,fontWeight:700,color:T.navy,textAlign:'center',lineHeight:1.5}}>{msg}</p>
+        <ConfIcon size={26} color={iconColor} strokeWidth={1.75} style={{margin:'0 auto 14px',display:'block'}}/>
+        {title && <p style={{fontSize:18,fontWeight:800,color:T.navy,textAlign:'center',marginBottom:8}}>{title}</p>}
+        {msg && <p style={{fontSize:15,fontWeight:600,color:T.sub,textAlign:'center',lineHeight:1.5}}>{msg}</p>}
+        {children}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginTop:20}}>
-          <button onClick={onNo} style={{padding:'14px',borderRadius:14,border:`1.5px solid ${T.border}`,background:T.bg,fontSize:14,fontWeight:700,color:T.sub,cursor:'pointer'}}>
-            Cancelar
+          <button onClick={onNo} style={{padding:'15px',borderRadius:14,border:`1.5px solid ${T.border}`,background:T.bg,fontSize:14,fontWeight:700,color:T.sub,cursor:'pointer'}}>
+            {noLabel}
           </button>
-          <button onClick={onYes} style={{padding:'14px',borderRadius:14,border:'none',background:T.forest,fontSize:14,fontWeight:700,color:'#fff',cursor:'pointer'}}>
-            Guardar igual
+          <button onClick={onYes} style={{padding:'15px',borderRadius:14,border:'none',background:yesColor,fontSize:14,fontWeight:700,color:'#fff',cursor:'pointer'}}>
+            {yesLabel}
           </button>
         </div>
       </div>
@@ -674,26 +676,40 @@ export default function App() {
     if (!forzar) {
       const dup = data.gastos.find(g=>g.concepto.toLowerCase()===c.toLowerCase()&&g.monto===gasto.monto&&g.moneda===gasto.moneda)
       if (dup) {
-        setConfirm({msg:`¿Segura, Arcelia? "${c}" ya está anotado hoy.`,onYes:()=>{setConfirm(null);agregarGasto(true)}})
+        setConfirm({title:'Gasto duplicado',msg:`"${c}" ya esta anotado hoy. Quieres guardarlo de nuevo?`,yesLabel:'Guardar igual',noLabel:'Cancelar',onYes:()=>{setConfirm(null);agregarGasto(true)}})
         return
       }
     }
     _commitGasto(gasto)
     setGasto({concepto:'',monto:'',moneda:'BS',categoria:'insumos'})
-    go('gastos'); showToast('Gasto guardado')
+    go('home'); showToast('Listo! Gasto anotado correctamente.', 3000)
   }
 
   function commitPendGastos() {
     let d = data
-    for (const g of pendGastos) d={...d,gastos:[...d.gastos,{...g,id:Date.now()+Math.random()}]}
+    for (const g of pendGastos) d={...d,gastos:[...d.gastos,{...g, concepto: capitalizar(g.concepto), id:Date.now()+Math.random()}]}
     setData(d); guardarData(d)
-    setPendGastos([]); go('gastos')
-    showToast(`${pendGastos.length} gastos guardados`)
+    setPendGastos([]); go('home')
+    showToast('Listo! Todo anotado correctamente.', 3000)
   }
 
-  function eliminarGasto(id) {
-    const nueva={...data,gastos:data.gastos.filter(g=>g.id!==id)}
-    setData(nueva); guardarData(nueva)
+  function eliminarGasto(g) {
+    setConfirm({
+      title: 'Borrar este gasto?',
+      msg: null,
+      body: <p style={{fontSize:15,color:T.sub,textAlign:'center',lineHeight:1.6}}>
+        Quieres quitar <strong style={{color:T.navy}}>{g.concepto}</strong> por <strong style={{color:T.rose}}>{g.moneda==='USD'?fUSD(g.monto):fBS(g.monto)}</strong>?
+      </p>,
+      yesLabel: 'Si, borrarlo',
+      noLabel: 'No, dejarlo',
+      yesColor: T.rose,
+      onYes: () => {
+        const nueva = { ...data, gastos: data.gastos.filter(x => x.id !== g.id) }
+        setData(nueva); guardarData(nueva)
+        setConfirm(null)
+        showToast('Gasto eliminado')
+      },
+    })
   }
 
   function cerrarCaja() {
@@ -1155,33 +1171,72 @@ export default function App() {
   // ══════════════════════════════════════════════════════════
   // CONFIRMAR VOZ MÚLTIPLE
   // ══════════════════════════════════════════════════════════
+  function editPendMonto(idx, campo, valor) {
+    setPendGastos(prev => prev.map((g, i) => {
+      if (i !== idx) return g
+      if (campo === 'usd') {
+        const usd = redondear(parseFloat(valor) || 0)
+        return { ...g, monto: String(usd), bsOrig: usd > 0 ? Math.round(usd * data.tasa) : null }
+      }
+      if (campo === 'bs') {
+        const bsVal = parseFloat(valor) || 0
+        return { ...g, bsOrig: Math.round(bsVal), monto: String(redondear(bsVal / data.tasa)) }
+      }
+      return g
+    }))
+  }
+
   if (pantalla === 'confirmarVoz') return (
     <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 100px',overflowY:'auto'}}>
-      <InnerHeader title="Confirmar gastos" onBack={()=>{setPendGastos([]);go('gastos')}}/>
-      <p style={{fontSize:14,color:T.sub,marginBottom:22}}>¿Esto es correcto?</p>
-      <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:28}}>
-        {pendGastos.map((g,i)=>(
-          <Card key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px 20px'}}>
-            <div style={{flex:1,minWidth:0}}>
-              <span style={{fontSize:15,fontWeight:700,color:T.navy}}>{g.concepto}</span>
-              {g.bsOrig != null && g.bsOrig > 0 && (
-                <p style={{fontSize:12,color:T.muted,marginTop:4,fontWeight:500}}>
-                  {fBS(g.bsOrig)} ÷ {data?.tasa}
-                </p>
-              )}
-            </div>
-            <div style={{textAlign:'right',flexShrink:0}}>
-              <span style={{fontSize:20,fontWeight:900,color:T.cobalt,letterSpacing:'-.02em'}}>
-                {fUSD(g.monto)}
-              </span>
+      <InnerHeader title="Confirmar gastos" onBack={()=>{setPendGastos([]);go('nuevoGasto')}}/>
+      <p style={{fontSize:14,color:T.sub,marginBottom:6}}>Revisa y ajusta si algo no esta bien</p>
+      <p style={{fontSize:12,color:T.muted,marginBottom:22}}>Toca un monto para editarlo</p>
+
+      <div style={{display:'flex',flexDirection:'column',gap:12,marginBottom:28}}>
+        {pendGastos.map((g, i) => (
+          <Card key={i} style={{padding:'18px 20px'}}>
+            {/* Concepto */}
+            <p style={{fontSize:16,fontWeight:800,color:T.navy,marginBottom:14}}>{g.concepto}</p>
+
+            {/* Dual currency inputs */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              {/* USD */}
+              <div>
+                <p style={{fontSize:10,fontWeight:700,color:T.cobalt,letterSpacing:'.06em',marginBottom:6}}>DOLARES</p>
+                <div style={{position:'relative'}}>
+                  <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',fontSize:15,fontWeight:700,color:T.cobalt}}>$</span>
+                  <input type="number" inputMode="decimal"
+                    value={g.monto}
+                    onChange={e => editPendMonto(i, 'usd', e.target.value)}
+                    style={{width:'100%',paddingLeft:30,paddingRight:10,height:46,fontSize:18,fontWeight:800,border:`1.5px solid ${T.cobalt}`,borderRadius:12,background:T.cobaltLight,color:T.navy,outline:'none'}}
+                  />
+                </div>
+              </div>
+
+              {/* BS */}
+              <div>
+                <p style={{fontSize:10,fontWeight:700,color:T.amber,letterSpacing:'.06em',marginBottom:6}}>BOLIVARES</p>
+                <div style={{position:'relative'}}>
+                  <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:14,fontWeight:700,color:T.amber}}>Bs</span>
+                  <input type="number" inputMode="decimal"
+                    value={g.bsOrig != null && g.bsOrig > 0 ? g.bsOrig : ''}
+                    placeholder={String(Math.round(n(g.monto) * data.tasa))}
+                    onChange={e => editPendMonto(i, 'bs', e.target.value)}
+                    style={{width:'100%',paddingLeft:34,paddingRight:10,height:46,fontSize:18,fontWeight:800,border:`1.5px solid ${T.amber}44`,borderRadius:12,background:T.amberLight,color:T.navy,outline:'none'}}
+                  />
+                </div>
+              </div>
             </div>
           </Card>
         ))}
       </div>
-      <div style={{display:'flex',gap:10}}>
-        <Btn onClick={()=>{setPendGastos([]);go('gastos')}} bg={T.border} color={T.navy} style={{flex:1}} icon={X}>Cancelar</Btn>
-        <Btn onClick={commitPendGastos} bg={T.forest} style={{flex:1}} icon={CheckCircle}>Guardar todo</Btn>
-      </div>
+
+      <Btn onClick={commitPendGastos} bg={T.forest} full icon={CheckCircle} style={{padding:'18px',fontSize:16,marginBottom:10}}>
+        Guardar todo
+      </Btn>
+      <Btn onClick={()=>{setPendGastos([]);go('nuevoGasto')}} bg={T.border} color={T.navy} full icon={X} style={{padding:'14px',fontSize:13,boxShadow:'none'}}>
+        Descartar
+      </Btn>
     </div>
   )
 
@@ -1374,7 +1429,7 @@ export default function App() {
       </Card>
 
       <Btn onClick={()=>agregarGasto(false)} bg={T.forest} full icon={CheckCircle} style={{padding:'16px',fontSize:15}}>Guardar Gasto</Btn>
-      <Confirm msg={confirm?.msg} onYes={confirm?.onYes} onNo={()=>setConfirm(null)}/>
+      <Confirm title={confirm?.title} msg={confirm?.msg} onYes={confirm?.onYes} onNo={()=>setConfirm(null)} yesLabel={confirm?.yesLabel} noLabel={confirm?.noLabel} yesColor={confirm?.yesColor}>{confirm?.body}</Confirm>
       <Toast msg={toast}/>
     </div>
   )
@@ -1515,7 +1570,7 @@ export default function App() {
                       <p style={{fontSize:15,fontWeight:700,color:T.navy}}>{g.concepto}</p>
                       <p style={{fontSize:12,color:T.muted,marginTop:2}}>{g.moneda==='USD'?`${fUSD(g.monto)} = ${fBS(n(g.monto)*data.tasa)}`:fBS(g.monto)}</p>
                     </div>
-                    <button onClick={()=>eliminarGasto(g.id)} style={{background:T.roseLight,border:'none',borderRadius:10,width:34,height:34,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
+                    <button onClick={()=>eliminarGasto(g)} style={{background:T.roseLight,border:'none',borderRadius:10,width:34,height:34,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
                       <Trash2 size={15} color={T.rose} strokeWidth={1.75}/>
                     </button>
                   </div>
@@ -1527,6 +1582,7 @@ export default function App() {
 
         <BottomNav pantalla={pantalla} go={go}/>
         <Toast msg={toast}/>
+        <Confirm title={confirm?.title} msg={confirm?.msg} onYes={confirm?.onYes} onNo={()=>setConfirm(null)} yesLabel={confirm?.yesLabel} noLabel={confirm?.noLabel} yesColor={confirm?.yesColor}>{confirm?.body}</Confirm>
       </div>
     )
   }
