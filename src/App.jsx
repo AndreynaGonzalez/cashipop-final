@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { supabase, fetchGastos, fetchIngresos, insertGasto, deleteGasto } from './supabase'
+import { supabase, fetchGastos, fetchIngresos, insertGasto, deleteGasto, signIn, signUp, signOut, onAuthChange, getSession } from './supabase'
 import {
   Home, Receipt, BarChart3, CalendarDays, PieChart as PieIcon,
   DollarSign, Landmark, Smartphone, Banknote, Bike, Zap,
@@ -66,6 +66,15 @@ function cargarHistorial() {
   try { return JSON.parse(localStorage.getItem(HIST_KEY) || '[]') }
   catch { return [] }
 }
+
+const FRASES_PODER = [
+  'Andino Pop brilla hoy gracias a ti, Arcelia.',
+  'Tu esfuerzo construye el futuro.',
+  'Eres la jefa de tu destino, preparando tus numeros...',
+  'Cada dia es una oportunidad para crecer.',
+  'Los numeros no mienten, y los tuyos van bien.',
+  'Orden y constancia, la receta del exito.',
+]
 
 function dataVacia(tasa = 481.21) {
   return {
@@ -647,7 +656,13 @@ function InnerHeader({ title, onBack }) {
 // APP
 // ═════════════════════════════════════════════════════════════════
 export default function App() {
-  const [pantalla,   setPantalla]   = useState('tasa')
+  const [user,       setUser]       = useState(undefined) // undefined=loading, null=no auth, object=logged in
+  const [authEmail,  setAuthEmail]  = useState('')
+  const [authPass,   setAuthPass]   = useState('')
+  const [authMode,   setAuthMode]   = useState('login') // 'login' | 'register'
+  const [authError,  setAuthError]  = useState('')
+  const [authLoading,setAuthLoading]= useState(false)
+  const [pantalla,   setPantalla]   = useState('home')
   const [data,       setData]       = useState(null)
   const [confetti,   setConfetti]   = useState(false)
   const [toast,      setToast]      = useState('')
@@ -680,53 +695,59 @@ export default function App() {
     setToast(msg); setTimeout(()=>setToast(''), ms)
   }, [])
 
+  // ── Auth listener ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    getSession().then(u => setUser(u || null))
+    const { data: { subscription } } = onAuthChange(u => setUser(u || null))
+    return () => subscription.unsubscribe()
+  }, [])
+
   // ── Cargar datos de Supabase ──────────────────────────────────────────────────
   useEffect(() => {
-    if (!supabase) { setDbLoaded(true); return }
+    if (!supabase || !user) { setDbLoaded(true); return }
     Promise.all([fetchGastos(), fetchIngresos()]).then(([g, i]) => {
       setDbGastos(g); setDbIngresos(i); setDbLoaded(true)
       console.log(`Supabase: ${g.length} gastos, ${i.length} ingresos`)
     })
-  }, [])
+  }, [user])
 
-  // ── Init ─────────────────────────────────────────────────────────────────────
+  // ── Init (tasa instantanea desde cache, sin esperar BCV) ────────────────────
   useEffect(() => {
     setHistorial(cargarHistorial())
     const stored = cargarData()
+    const tasaCache = parseFloat(localStorage.getItem('CP_TASA')) || 481.21
 
     if (stored) {
       if (stored.fecha !== hoy()) {
-        // Nuevo día: archivar el anterior y empezar fresco
         archivarData(stored)
         setHistorial(cargarHistorial())
-        setBcvLoad(true)
-        fetchTasaBCV().then(t => {
-          const tasa = t || (stored.tasa || 481.21)
-          const nueva = dataVacia(tasa)
-          setData(nueva); guardarData(nueva)
-          setTasaTemp(String(tasa)); setBcvLoad(false)
-        })
+        const nueva = dataVacia(tasaCache)
+        setData(nueva); guardarData(nueva)
+        setTasaTemp(String(tasaCache))
       } else {
         setData(stored)
         setTasaTemp(String(stored.tasa))
-        setPantalla('home')
       }
     } else {
-      setBcvLoad(true)
-      fetchTasaBCV().then(t => {
-        const tasa = t || 481.21
-        const nueva = dataVacia(tasa)
-        setData(nueva); guardarData(nueva)
-        setTasaTemp(String(tasa)); setBcvLoad(false)
-      })
+      const nueva = dataVacia(tasaCache)
+      setData(nueva); guardarData(nueva)
+      setTasaTemp(String(tasaCache))
     }
+    setPantalla('home')
   }, [])
 
   function refetchBCV() {
     setBcvLoad(true)
     fetchTasaBCV().then(t => {
-      if (t) { setTasaTemp(String(t)); showToast(`Tasa: Bs ${t}`) }
-      else showToast('Sin conexión al BCV')
+      if (t) {
+        setTasaTemp(String(t))
+        localStorage.setItem('CP_TASA', String(t))
+        if (data) {
+          const nueva = { ...data, tasa: t }
+          setData(nueva); guardarData(nueva)
+        }
+        showToast(`Tasa actualizada: Bs ${t}`)
+      } else showToast('Sin conexion al BCV')
       setBcvLoad(false)
     })
   }
@@ -734,9 +755,11 @@ export default function App() {
   // ── Helpers de estado ────────────────────────────────────────────────────────
   function confirmarTasa() {
     const t = parseFloat(tasaTemp.replace(',','.'))
-    if (!t||t<50||t>5000) { showToast('Tasa inválida'); return }
+    if (!t||t<50||t>5000) { showToast('Tasa invalida'); return }
     const nueva = {...data, tasa:t}
-    setData(nueva); guardarData(nueva); go('home')
+    setData(nueva); guardarData(nueva)
+    localStorage.setItem('CP_TASA', String(t))
+    go('home')
   }
 
   function setIngreso(campo, valor) {
@@ -1137,11 +1160,63 @@ export default function App() {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  if (!data) return (
-    <div style={{minHeight:'100svh',background:T.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:14}}>
-      <RefreshCw size={30} color={T.cobalt} strokeWidth={1.75} style={{animation:'spin 1s linear infinite'}}/>
-      <p style={{fontSize:15,fontWeight:600,color:T.sub}}>{bcvLoad?'Consultando BCV...':'Iniciando...'}</p>
+  // ── Auth: handle login/register ──────────────────────────────────────────────
+  async function handleAuth() {
+    setAuthError(''); setAuthLoading(true)
+    const fn = authMode === 'login' ? signIn : signUp
+    const { error } = await fn(authEmail, authPass)
+    if (error) setAuthError(error.message)
+    setAuthLoading(false)
+  }
+
+  // ── Loading screen ─────────────────────────────────────────────────────────
+  const fraseIdx = Math.floor(Date.now() / 3000) % FRASES_PODER.length
+
+  if (user === undefined || !data) return (
+    <div style={{minHeight:'100svh',background:T.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20,padding:'40px 32px'}}>
+      <div style={{width:60,height:60,borderRadius:18,background:T.brandGold,display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <RefreshCw size={26} color='#fff' strokeWidth={1.75} style={{animation:'spin 1s linear infinite'}}/>
+      </div>
+      <p style={{fontSize:16,fontWeight:700,color:T.navy,textAlign:'center',lineHeight:1.5}}>{FRASES_PODER[fraseIdx]}</p>
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+    </div>
+  )
+
+  // ── Login screen ───────────────────────────────────────────────────────────
+  if (supabase && user === null) return (
+    <div style={{minHeight:'100svh',background:T.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 28px',gap:24}}>
+      <div style={{textAlign:'center',marginBottom:8}}>
+        <div style={{width:64,height:64,borderRadius:20,background:'linear-gradient(145deg,#3D2539,#5E405B)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px',boxShadow:'0 8px 32px rgba(94,64,91,0.2)'}}>
+          <DollarSign size={28} color={T.brandGold} strokeWidth={1.75}/>
+        </div>
+        <h1 style={{fontSize:26,fontWeight:900,color:T.navy,letterSpacing:'-.03em'}}>Andino Pop</h1>
+        <p style={{fontSize:14,color:T.sub,marginTop:6}}>{authMode === 'login' ? 'Inicia sesion' : 'Crea tu cuenta'}</p>
+      </div>
+
+      <Card style={{width:'100%',maxWidth:380,padding:28}}>
+        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          <div>
+            <p style={{fontSize:12,fontWeight:700,color:T.muted,letterSpacing:'.06em',marginBottom:6}}>CORREO</p>
+            <input type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="arcelia@andinopop.com"
+              style={{width:'100%',height:48,paddingLeft:14,fontSize:15,fontWeight:600,border:`1.5px solid ${T.border}`,borderRadius:14,outline:'none',color:T.navy,background:T.bg}}/>
+          </div>
+          <div>
+            <p style={{fontSize:12,fontWeight:700,color:T.muted,letterSpacing:'.06em',marginBottom:6}}>CONTRASENA</p>
+            <input type="password" value={authPass} onChange={e=>setAuthPass(e.target.value)} placeholder="Min. 6 caracteres"
+              style={{width:'100%',height:48,paddingLeft:14,fontSize:15,fontWeight:600,border:`1.5px solid ${T.border}`,borderRadius:14,outline:'none',color:T.navy,background:T.bg}}/>
+          </div>
+          {authError && <p style={{fontSize:13,color:T.rose,fontWeight:600,textAlign:'center'}}>{authError}</p>}
+          <Btn onClick={handleAuth} bg={T.brandGold} color={T.brand} full disabled={authLoading || !authEmail || !authPass} style={{padding:'16px',fontSize:15,marginTop:4}}>
+            {authLoading ? 'Procesando...' : authMode === 'login' ? 'Entrar' : 'Crear cuenta'}
+          </Btn>
+        </div>
+      </Card>
+
+      <button onClick={()=>{setAuthMode(authMode==='login'?'register':'login');setAuthError('')}} style={{background:'none',border:'none',color:T.sub,fontSize:14,fontWeight:600,cursor:'pointer'}}>
+        {authMode === 'login' ? 'No tengo cuenta, crear una' : 'Ya tengo cuenta, iniciar sesion'}
+      </button>
+
+      <p style={{fontSize:12,color:T.muted,textAlign:'center',marginTop:8,lineHeight:1.5}}>{FRASES_PODER[fraseIdx]}</p>
     </div>
   )
 
@@ -1648,10 +1723,15 @@ export default function App() {
         {/* Acciones terciarias: WA + Tasa */}
         <div style={{display:'flex',alignItems:'center',gap:8,marginTop:2}}>
           <WaBtn onClick={()=>enviarResumen()}/>
-          <button onClick={()=>go('tasa')} style={{background:T.amberLight,border:`1px solid ${T.brandGold}33`,borderRadius:13,padding:'7px 12px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:1,WebkitTapHighlightColor:'transparent'}}>
-            <span style={{fontSize:9,fontWeight:700,color:T.brand,letterSpacing:'.08em'}}>TASA BCV</span>
-            <span style={{fontSize:18,fontWeight:900,color:T.brand,letterSpacing:'-.02em'}}>Bs {data.tasa}</span>
-          </button>
+          <div style={{display:'flex',alignItems:'center',gap:6,background:T.amberLight,border:`1px solid ${T.brandGold}33`,borderRadius:13,padding:'7px 12px'}}>
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1}}>
+              <span style={{fontSize:9,fontWeight:700,color:T.brand,letterSpacing:'.08em'}}>TASA</span>
+              <span style={{fontSize:18,fontWeight:900,color:T.brand,letterSpacing:'-.02em'}}>Bs {data.tasa}</span>
+            </div>
+            <button onClick={refetchBCV} disabled={bcvLoad} style={{width:28,height:28,borderRadius:8,border:'none',background:'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
+              <RefreshCw size={14} color={T.brand} strokeWidth={1.75} style={{animation:bcvLoad?'spin 1s linear infinite':'none'}}/>
+            </button>
+          </div>
         </div>
       </div>
 

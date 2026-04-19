@@ -7,6 +7,36 @@ export const supabase = SUPABASE_URL && SUPABASE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_KEY)
   : null
 
+// ── Auth ────────────────────────────────────────────────────────────────────
+
+export async function signUp(email, password) {
+  if (!supabase) return { error: { message: 'Supabase no configurado' } }
+  return supabase.auth.signUp({ email, password })
+}
+
+export async function signIn(email, password) {
+  if (!supabase) return { error: { message: 'Supabase no configurado' } }
+  return supabase.auth.signInWithPassword({ email, password })
+}
+
+export async function signOut() {
+  if (!supabase) return
+  return supabase.auth.signOut()
+}
+
+export function onAuthChange(callback) {
+  if (!supabase) return { data: { subscription: { unsubscribe: () => {} } } }
+  return supabase.auth.onAuthStateChange((_event, session) => {
+    callback(session?.user || null)
+  })
+}
+
+export async function getSession() {
+  if (!supabase) return null
+  const { data } = await supabase.auth.getSession()
+  return data.session?.user || null
+}
+
 // ── Gastos ──────────────────────────────────────────────────────────────────
 
 export async function fetchGastos() {
