@@ -343,7 +343,7 @@ function parsearVozMultiple(texto, tasa) {
 
 // ─── OpenRouter IA ────────────────────────────────────────────────────────────
 const OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_KEY || ''
-const SYSTEM_PROMPT = 'Contador Andino Pop. Tasa: 481.21. Si dice Bs, divide entre tasa y redondea a 2 decimales. Si dice $, mantiene. Numeros redondos se quedan redondos (20000 Bs / tasa = resultado redondeado). Capitaliza cada palabra del concepto. Responde solo JSON: [{"c": "Concepto", "m": 0.00}]'
+const SYSTEM_PROMPT = 'Contador Andino Pop. Tasa: 481.21. Si dice Bs, divide entre tasa y redondea a 2 decimales. Si dice $, mantiene. Numeros redondos se quedan redondos. Capitaliza cada palabra del concepto. Si el monto original era en Bs, incluyelo en "bs". Responde solo JSON: [{"c":"Concepto","m":0.00,"bs":0}] donde "bs" es el monto original en bolivares (0 si era en dolares).'
 
 async function procesarGastoConIA(texto, tasa) {
   const prompt = SYSTEM_PROMPT.replace('481.21', String(tasa))
@@ -388,8 +388,9 @@ const fUSD = v => {
   return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 const fBS = v => {
-  const num = Math.round(parseFloat(v) || 0)
-  return `Bs ${num.toLocaleString('es-VE')}`
+  const num = redondear(parseFloat(v) || 0)
+  const esEntero = num === Math.floor(num)
+  return `Bs ${num.toLocaleString('es-VE', { minimumFractionDigits: esEntero ? 0 : 2, maximumFractionDigits: 2 })}`
 }
 const fDate = iso => {
   const [y,m,d] = iso.split('-')
@@ -832,7 +833,7 @@ export default function App() {
                 concepto: capitalizar(item.c),
                 monto: String(redondear(item.m)),
                 moneda: 'USD',
-                bsOrig: null,
+                bsOrig: item.bs && item.bs > 0 ? Math.round(item.bs) : null,
                 categoria: 'insumos',
                 id: Date.now() + i + Math.random(),
               }))
@@ -1159,23 +1160,18 @@ export default function App() {
       <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:28}}>
         {pendGastos.map((g,i)=>(
           <Card key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px 20px'}}>
-            <div>
+            <div style={{flex:1,minWidth:0}}>
               <span style={{fontSize:15,fontWeight:700,color:T.navy}}>{g.concepto}</span>
-              {g.bsOrig && (
-                <p style={{fontSize:11,color:T.muted,marginTop:3,fontWeight:500}}>
-                  Bs {g.bsOrig.toLocaleString('es-VE')} ÷ {data?.tasa} = {fUSD(g.monto)}
+              {g.bsOrig != null && g.bsOrig > 0 && (
+                <p style={{fontSize:12,color:T.muted,marginTop:4,fontWeight:500}}>
+                  {fBS(g.bsOrig)} ÷ {data?.tasa}
                 </p>
               )}
             </div>
-            <div style={{textAlign:'right'}}>
-              <span style={{fontSize:18,fontWeight:900,color:T.cobalt,letterSpacing:'-.02em'}}>
+            <div style={{textAlign:'right',flexShrink:0}}>
+              <span style={{fontSize:20,fontWeight:900,color:T.cobalt,letterSpacing:'-.02em'}}>
                 {fUSD(g.monto)}
               </span>
-              {g.bsOrig && (
-                <p style={{fontSize:11,color:T.muted,marginTop:2}}>
-                  {fBS(g.bsOrig)}
-                </p>
-              )}
             </div>
           </Card>
         ))}
