@@ -870,39 +870,65 @@ export default function App() {
 
   async function cerrarCaja() {
     const fecha = fechaCierre || hoy()
+    const ingresos = data.ingresos
+
+    // Validar que hay al menos un ingreso > 0
+    const camposMap = [
+      { key: 'bicentenario', concepto: 'Bicentenario', cat: 'Bancos', mon: 'BS' },
+      { key: 'bancaribe', concepto: 'Bancaribe', cat: 'Bancos', mon: 'BS' },
+      { key: 'banesco', concepto: 'Banesco', cat: 'Bancos', mon: 'BS' },
+      { key: 'bancamiga', concepto: 'Bancamiga', cat: 'Bancos', mon: 'BS' },
+      { key: 'pagos_dia', concepto: 'Pagomovil', cat: 'Pagos Del Dia', mon: 'BS' },
+      { key: 'efectivo_bs', concepto: 'Efectivo Bolivares', cat: 'Efectivo', mon: 'BS' },
+      { key: 'delivery', concepto: 'Delivery', cat: 'Delivery', mon: 'BS' },
+      { key: 'pedidosya_usd', concepto: 'Pedidos Ya Prepago', cat: 'Delivery', mon: 'USD' },
+      { key: 'pedidosya_bs', concepto: 'Pedidos Ya Efectivo', cat: 'Delivery', mon: 'BS' },
+      { key: 'divisas_usd', concepto: 'Divisas', cat: 'Efectivo', mon: 'USD' },
+      { key: 'cuentas_cobrar', concepto: 'Cuentas Por Cobrar', cat: 'Por Cobrar', mon: 'USD' },
+    ]
+
+    const rows = camposMap
+      .filter(c => parseFloat(ingresos[c.key]) > 0)
+      .map(c => ({
+        fecha,
+        concepto: c.concepto,
+        monto: parseFloat(ingresos[c.key]),
+        moneda: c.mon,
+        categoria: c.cat,
+        notas: `Cierre ${fecha}`,
+      }))
+
+    if (rows.length === 0) {
+      showToast('No hay ingresos para guardar. Llena al menos un campo.', 3500)
+      return
+    }
+
+    // Guardar local
     const nueva = { ...data, fecha, cerrada: true }
     setData(nueva); guardarData(nueva)
     archivarData(nueva); setHistorial(cargarHistorial())
 
-    // Upsert ingresos a Supabase: borrar los de esa fecha y reinsertar
+    // Guardar en Supabase: delete + insert (upsert)
     if (supabase) {
+      console.log(`Cerrando caja ${fecha}: ${rows.length} ingresos a guardar`)
       await deleteIngresosByFecha(fecha)
-      const campos = [
-        { key: 'bicentenario', concepto: 'Bicentenario', cat: 'Bancos', mon: 'BS' },
-        { key: 'bancaribe', concepto: 'Bancaribe', cat: 'Bancos', mon: 'BS' },
-        { key: 'banesco', concepto: 'Banesco', cat: 'Bancos', mon: 'BS' },
-        { key: 'bancamiga', concepto: 'Bancamiga', cat: 'Bancos', mon: 'BS' },
-        { key: 'pagos_dia', concepto: 'Pagomovil', cat: 'Pagos Del Dia', mon: 'BS' },
-        { key: 'efectivo_bs', concepto: 'Efectivo Bolivares', cat: 'Efectivo', mon: 'BS' },
-        { key: 'delivery', concepto: 'Delivery', cat: 'Delivery', mon: 'BS' },
-        { key: 'pedidosya_usd', concepto: 'Pedidos Ya Prepago', cat: 'Delivery', mon: 'USD' },
-        { key: 'pedidosya_bs', concepto: 'Pedidos Ya Efectivo', cat: 'Delivery', mon: 'BS' },
-        { key: 'divisas_usd', concepto: 'Divisas', cat: 'Efectivo', mon: 'USD' },
-        { key: 'cuentas_cobrar', concepto: 'Cuentas Por Cobrar', cat: 'Por Cobrar', mon: 'USD' },
-      ]
-      const rows = campos
-        .filter(c => n(nueva.ingresos[c.key]) > 0)
-        .map(c => ({ fecha, concepto: c.concepto, monto: n(nueva.ingresos[c.key]), moneda: c.mon, categoria: c.cat, notas: `Cierre ${fecha}` }))
-      if (rows.length) {
-        await Promise.all(rows.map(r => insertIngreso(r)))
+      const results = await Promise.all(rows.map(r => insertIngreso(r)))
+      const saved = results.filter(Boolean).length
+      console.log(`Supabase: ${saved}/${rows.length} ingresos guardados`)
+
+      if (saved === 0) {
+        showToast('Error guardando en la base de datos. Intenta de nuevo.', 4000)
+        return
       }
-      // Refresh DB data
+
+      // Refresh completo
       const [g, i] = await Promise.all([fetchGastos(), fetchIngresos()])
       setDbGastos(g); setDbIngresos(i)
+      console.log(`Post-cierre: ${i.length} ingresos, ${g.length} gastos en DB`)
     }
 
     setConfetti(true); setTimeout(() => setConfetti(false), 3500)
-    showToast('Caja cerrada correctamente')
+    showToast(`Caja cerrada: ${rows.length} ingresos guardados`)
   }
 
   function reabrirCaja() {
@@ -1026,24 +1052,67 @@ export default function App() {
     }
   }
 
-  function aplicarOCR(cerrar = false) {
+  async function aplicarOCR(cerrar = false) {
+    // Cargar valores del OCR en el formulario local
     const nuevos = { ...data.ingresos }
     for (const [k, v] of Object.entries(ocrRes.campos)) {
-      if (v) nuevos[k] = String(v)
+      if (v && parseFloat(v) > 0) nuevos[k] = String(parseFloat(v))
     }
     const tasaNueva = ocrRes.tasa > 50 ? ocrRes.tasa : data.tasa
-    let nueva = { ...data, ingresos: nuevos, tasa: tasaNueva }
-    if (cerrar) {
-      nueva.cerrada = true
-      archivarData(nueva)
-      setHistorial(cargarHistorial())
-      setConfetti(true); setTimeout(() => setConfetti(false), 3500)
-    }
+
+    // Actualizar estado con los valores del OCR
+    const nueva = { ...data, ingresos: nuevos, tasa: tasaNueva }
     setData(nueva); guardarData(nueva)
     setTasaTemp(String(tasaNueva))
+    localStorage.setItem('CP_TASA', String(tasaNueva))
     setOcrRes(null)
-    go(cerrar ? 'cierre' : 'ingresos')
-    showToast(cerrar ? 'Cierre aplicado correctamente' : 'Valores cargados')
+
+    if (cerrar) {
+      // Esperar a que React actualice data, luego cerrar
+      // Llamamos cerrarCaja directamente con los datos frescos
+      const fecha = fechaCierre || hoy()
+      const camposMap = [
+        { key: 'bicentenario', concepto: 'Bicentenario', cat: 'Bancos', mon: 'BS' },
+        { key: 'bancaribe', concepto: 'Bancaribe', cat: 'Bancos', mon: 'BS' },
+        { key: 'banesco', concepto: 'Banesco', cat: 'Bancos', mon: 'BS' },
+        { key: 'bancamiga', concepto: 'Bancamiga', cat: 'Bancos', mon: 'BS' },
+        { key: 'pagos_dia', concepto: 'Pagomovil', cat: 'Pagos Del Dia', mon: 'BS' },
+        { key: 'efectivo_bs', concepto: 'Efectivo Bolivares', cat: 'Efectivo', mon: 'BS' },
+        { key: 'delivery', concepto: 'Delivery', cat: 'Delivery', mon: 'BS' },
+        { key: 'pedidosya_usd', concepto: 'Pedidos Ya Prepago', cat: 'Delivery', mon: 'USD' },
+        { key: 'pedidosya_bs', concepto: 'Pedidos Ya Efectivo', cat: 'Delivery', mon: 'BS' },
+        { key: 'divisas_usd', concepto: 'Divisas', cat: 'Efectivo', mon: 'USD' },
+        { key: 'cuentas_cobrar', concepto: 'Cuentas Por Cobrar', cat: 'Por Cobrar', mon: 'USD' },
+      ]
+      const rows = camposMap
+        .filter(c => parseFloat(nuevos[c.key]) > 0)
+        .map(c => ({ fecha, concepto: c.concepto, monto: parseFloat(nuevos[c.key]), moneda: c.mon, categoria: c.cat, notas: `Cierre ${fecha}` }))
+
+      if (rows.length === 0) {
+        showToast('No se detectaron ingresos en la foto. Revisa manualmente.', 4000)
+        go('ingresos')
+        return
+      }
+
+      nueva.cerrada = true; nueva.fecha = fecha
+      setData(nueva); guardarData(nueva)
+      archivarData(nueva); setHistorial(cargarHistorial())
+
+      if (supabase) {
+        await deleteIngresosByFecha(fecha)
+        const results = await Promise.all(rows.map(r => insertIngreso(r)))
+        console.log(`OCR cierre: ${results.filter(Boolean).length}/${rows.length} guardados`)
+        const [g, i] = await Promise.all([fetchGastos(), fetchIngresos()])
+        setDbGastos(g); setDbIngresos(i)
+      }
+
+      go('cierre')
+      setConfetti(true); setTimeout(() => setConfetti(false), 3500)
+      showToast(`Cierre aplicado: ${rows.length} ingresos guardados`)
+    } else {
+      go('ingresos')
+      showToast('Valores cargados en el formulario')
+    }
   }
 
   // ── Voz ───────────────────────────────────────────────────────────────────────
