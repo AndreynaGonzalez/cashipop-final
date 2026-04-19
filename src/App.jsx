@@ -1167,12 +1167,60 @@ export default function App() {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // ── Auth: handle login/register ──────────────────────────────────────────────
+  // ── Auth: ultra-flexible, never blocks ──────────────────────────────────────
+  const FRASES_AUTH = [
+    'Verificando tus datos, un segundo mas, jefa...',
+    'Preparando todo para ti...',
+    'Ya casi entramos...',
+  ]
+
   async function handleAuth() {
     setAuthError(''); setAuthLoading(true)
-    const fn = authMode === 'login' ? signIn : signUp
-    const { error } = await fn(authEmail, authPass)
-    if (error) setAuthError(error.message)
+
+    try {
+      // Intenta lo que el usuario pidio primero
+      const { error } = authMode === 'login'
+        ? await signIn(authEmail, authPass)
+        : await signUp(authEmail, authPass)
+
+      if (!error) { setAuthLoading(false); return } // exito
+
+      const msg = (error.message || '').toLowerCase()
+
+      // Si intento registrar y ya existe → login automatico
+      if (authMode === 'register' && (msg.includes('already') || msg.includes('existe') || msg.includes('registered'))) {
+        const { error: e2 } = await signIn(authEmail, authPass)
+        if (!e2) { setAuthLoading(false); return }
+        setAuthError('Esa cuenta ya existe. Verifica tu contrasena.')
+        setAuthLoading(false); return
+      }
+
+      // Si intento login y no existe → registrar automatico
+      if (authMode === 'login' && (msg.includes('invalid') || msg.includes('credentials') || msg.includes('not found'))) {
+        const { error: e2 } = await signUp(authEmail, authPass)
+        if (!e2) {
+          setAuthError('Cuenta creada. Revisa tu correo si te pide confirmacion.')
+          setAuthLoading(false); return
+        }
+      }
+
+      // Rate limit → mensaje amigable, no bloquear
+      if (msg.includes('rate') || msg.includes('429') || msg.includes('too many') || msg.includes('email rate')) {
+        setAuthError('Dame un momentito, jefa. Intentemos en unos segundos.')
+        setAuthLoading(false); return
+      }
+
+      // Cualquier otro error → mensaje suave
+      if (msg.includes('password') && msg.includes('6')) {
+        setAuthError('La contrasena necesita al menos 6 caracteres.')
+      } else if (msg.includes('email')) {
+        setAuthError('Revisa que el correo este bien escrito.')
+      } else {
+        setAuthError('Algo salio mal. Intenta de nuevo en un momento.')
+      }
+    } catch {
+      setAuthError('Sin conexion. Verifica tu internet.')
+    }
     setAuthLoading(false)
   }
 
@@ -1197,7 +1245,7 @@ export default function App() {
           <DollarSign size={28} color={T.brandGold} strokeWidth={1.75}/>
         </div>
         <h1 style={{fontSize:26,fontWeight:900,color:T.navy,letterSpacing:'-.03em'}}>Andino Pop</h1>
-        <p style={{fontSize:14,color:T.sub,marginTop:6}}>{authMode === 'login' ? 'Inicia sesion' : 'Crea tu cuenta'}</p>
+        <p style={{fontSize:14,color:T.sub,marginTop:6}}>Tu sistema de control financiero</p>
       </div>
 
       <Card style={{width:'100%',maxWidth:380,padding:28}}>
@@ -1205,25 +1253,31 @@ export default function App() {
           <div>
             <p style={{fontSize:12,fontWeight:700,color:T.muted,letterSpacing:'.06em',marginBottom:6}}>CORREO</p>
             <input type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="arcelia@andinopop.com"
+              onKeyDown={e=>e.key==='Enter'&&handleAuth()}
               style={{width:'100%',height:48,paddingLeft:14,fontSize:15,fontWeight:600,border:`1.5px solid ${T.border}`,borderRadius:14,outline:'none',color:T.navy,background:T.bg}}/>
           </div>
           <div>
             <p style={{fontSize:12,fontWeight:700,color:T.muted,letterSpacing:'.06em',marginBottom:6}}>CONTRASENA</p>
             <input type="password" value={authPass} onChange={e=>setAuthPass(e.target.value)} placeholder="Min. 6 caracteres"
+              onKeyDown={e=>e.key==='Enter'&&handleAuth()}
               style={{width:'100%',height:48,paddingLeft:14,fontSize:15,fontWeight:600,border:`1.5px solid ${T.border}`,borderRadius:14,outline:'none',color:T.navy,background:T.bg}}/>
           </div>
-          {authError && <p style={{fontSize:13,color:T.rose,fontWeight:600,textAlign:'center'}}>{authError}</p>}
-          <Btn onClick={handleAuth} bg={T.brandGold} color={T.brand} full disabled={authLoading || !authEmail || !authPass} style={{padding:'16px',fontSize:15,marginTop:4}}>
-            {authLoading ? 'Procesando...' : authMode === 'login' ? 'Entrar' : 'Crear cuenta'}
+          {authError && (
+            <p style={{fontSize:13,fontWeight:600,textAlign:'center',lineHeight:1.4,
+              color: authError.includes('creada') ? T.forest : T.sub,
+              background: authError.includes('creada') ? T.forestLight : T.amberLight,
+              padding:'10px 14px',borderRadius:12,
+            }}>{authError}</p>
+          )}
+          <Btn onClick={handleAuth} bg={T.brandGold} color={T.brand} full style={{padding:'16px',fontSize:15,marginTop:4}}>
+            {authLoading ? FRASES_AUTH[Math.floor(Date.now()/2000)%FRASES_AUTH.length] : 'Entrar'}
           </Btn>
         </div>
       </Card>
 
-      <button onClick={()=>{setAuthMode(authMode==='login'?'register':'login');setAuthError('')}} style={{background:'none',border:'none',color:T.sub,fontSize:14,fontWeight:600,cursor:'pointer'}}>
-        {authMode === 'login' ? 'No tengo cuenta, crear una' : 'Ya tengo cuenta, iniciar sesion'}
-      </button>
-
-      <p style={{fontSize:12,color:T.muted,textAlign:'center',marginTop:8,lineHeight:1.5}}>{FRASES_PODER[fraseIdx]}</p>
+      <p style={{fontSize:12,color:T.muted,textAlign:'center',marginTop:8,lineHeight:1.5}}>
+        Escribe tu correo y contrasena. Si no tienes cuenta, se crea automaticamente.
+      </p>
     </div>
   )
 
