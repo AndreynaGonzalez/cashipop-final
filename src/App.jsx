@@ -705,14 +705,14 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // ── Cargar datos de Supabase ──────────────────────────────────────────────────
+  // ── Cargar datos de Supabase (global, sin filtro de usuario) ──────────────────
   useEffect(() => {
-    if (!supabase || !user) { setDbLoaded(true); return }
+    if (!supabase) { setDbLoaded(true); return }
     Promise.all([fetchGastos(), fetchIngresos()]).then(([g, i]) => {
       setDbGastos(g); setDbIngresos(i); setDbLoaded(true)
       console.log(`Supabase: ${g.length} gastos, ${i.length} ingresos`)
     })
-  }, [user])
+  }, [])
 
   // ── Init (tasa instantanea desde cache, sin esperar BCV) ────────────────────
   useEffect(() => {
