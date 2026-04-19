@@ -684,10 +684,11 @@ export default function App() {
   const [dbIngresos, setDbIngresos] = useState([])
   const [dbLoaded,   setDbLoaded]   = useState(false)
 
-  const fileRef      = useRef(null)
-  const gastoFileRef = useRef(null)
-  const homeFileRef  = useRef(null)
-  const srRef        = useRef(null)
+  const fileRef       = useRef(null)
+  const gastoFileRef  = useRef(null)
+  const homeFileRef   = useRef(null)
+  const cierreFileRef = useRef(null)
+  const srRef         = useRef(null)
   const SR      = window.SpeechRecognition || window.webkitSpeechRecognition
 
   const go        = useCallback(p => setPantalla(p), [])
@@ -852,7 +853,13 @@ export default function App() {
     setData(nueva); guardarData(nueva)
     archivarData(nueva); setHistorial(cargarHistorial())
     setConfetti(true); setTimeout(()=>setConfetti(false),3500)
-    showToast('¡Caja cerrada!')
+    showToast('Caja cerrada correctamente')
+  }
+
+  function reabrirCaja() {
+    const nueva = { ...data, cerrada: false }
+    setData(nueva); guardarData(nueva)
+    showToast('No pasa nada, Arcelia. Corrijamos los numeros juntos.', 3500)
   }
 
   // ── Escanear factura como GASTO ───────────────────────────────────────────────
@@ -1870,12 +1877,13 @@ export default function App() {
   // CIERRE (tab)
   // ══════════════════════════════════════════════════════════
   if (pantalla === 'cierre') {
+    const tieneIngresos = Object.values(ing).some(v => n(v) > 0)
     const lineas=[
       {key:'bicentenario',label:'Bicentenario',         Icon:Landmark,   moneda:'BS'},
       {key:'bancaribe',   label:'Bancaribe',             Icon:Landmark,   moneda:'BS'},
       {key:'banesco',     label:'Banesco',               Icon:Landmark,   moneda:'BS'},
       {key:'bancamiga',   label:'Bancamiga',             Icon:Landmark,   moneda:'BS'},
-      {key:'pagos_dia',   label:'Pagos del día',         Icon:CreditCard, moneda:'BS'},
+      {key:'pagos_dia',   label:'Pagos del dia',         Icon:CreditCard, moneda:'BS'},
       {key:'efectivo_bs', label:'Efectivo',              Icon:Banknote,   moneda:'BS'},
       {key:'delivery',    label:'Delivery',              Icon:Bike,       moneda:'BS'},
       {key:'pedidosya_usd',label:'Pedidos Ya Prepago',   Icon:Package,    moneda:'USD'},
@@ -1889,7 +1897,40 @@ export default function App() {
           <h2 style={{fontSize:22,fontWeight:800,color:T.navy,letterSpacing:'-.025em'}}>Cierre de Caja</h2>
           <WaBtn onClick={()=>enviarResumen()}/>
         </div>
-        <p style={{fontSize:12,color:T.muted,marginBottom:24,letterSpacing:'.02em'}}>{fDate(data.fecha)}  ·  Tasa Bs {data.tasa}</p>
+        <p style={{fontSize:12,color:T.muted,marginBottom:20,letterSpacing:'.02em'}}>{fDate(data.fecha)}  ·  Tasa Bs {data.tasa}</p>
+
+        {/* Entrada dual: Foto o Manual */}
+        {!tieneIngresos && !data.cerrada && (
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
+            <button onClick={()=>cierreFileRef.current?.click()} style={{
+              background:T.brandGold,color:T.brand,border:'none',borderRadius:20,padding:'20px 12px',
+              cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:10,
+              boxShadow:'0 5px 0 #E5A040',WebkitTapHighlightColor:'transparent',
+              transition:'transform .08s,box-shadow .08s',
+            }}
+              onPointerDown={e=>{e.currentTarget.style.transform='translateY(3px)';e.currentTarget.style.boxShadow='0 2px 0 #E5A040'}}
+              onPointerUp={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 #E5A040'}}
+              onPointerLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 #E5A040'}}
+            >
+              <Camera size={24} color={T.brand} strokeWidth={1.75}/>
+              <span style={{fontSize:14,fontWeight:800}}>Tomar foto</span>
+            </button>
+            <button onClick={()=>go('ingresos')} style={{
+              background:T.brand,color:'#fff',border:'none',borderRadius:20,padding:'20px 12px',
+              cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:10,
+              boxShadow:'0 5px 0 #3D2539',WebkitTapHighlightColor:'transparent',
+              transition:'transform .08s,box-shadow .08s',
+            }}
+              onPointerDown={e=>{e.currentTarget.style.transform='translateY(3px)';e.currentTarget.style.boxShadow='0 2px 0 #3D2539'}}
+              onPointerUp={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 #3D2539'}}
+              onPointerLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 #3D2539'}}
+            >
+              <Edit3 size={24} color='#fff' strokeWidth={1.75}/>
+              <span style={{fontSize:14,fontWeight:800}}>Cargar manual</span>
+            </button>
+            <input ref={cierreFileRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{if(e.target.files[0])procesarFoto(e.target.files[0]);e.target.value=''}}/>
+          </div>
+        )}
 
         {/* Tarjeta resumen principal */}
         <div style={{background:'linear-gradient(145deg,#3D2539,#5E405B)',borderRadius:32,padding:'28px 24px',marginBottom:18,boxShadow:'0 16px 48px rgba(0,0,0,0.18)'}}>
@@ -1912,6 +1953,13 @@ export default function App() {
             <p style={{fontSize:12,color:'#FFB752',fontWeight:600}}>POR COBRAR (no incluido): {fUSD(cc)}</p>
           </div>}
         </div>
+
+        {/* Boton editar ingresos si ya hay datos */}
+        {tieneIngresos && !data.cerrada && (
+          <Btn onClick={()=>go('ingresos')} bg={T.cobaltLight} color={T.brand} full icon={Edit3} style={{marginBottom:18,padding:'13px',fontSize:13,boxShadow:'none'}}>
+            Editar ingresos del cierre
+          </Btn>
+        )}
 
         {lineas.length>0&&(
           <>
@@ -1985,15 +2033,25 @@ export default function App() {
           </>
         )}
 
-        {!data.cerrada?(
+        {/* Cerrar / Reabrir */}
+        {!data.cerrada ? (
           <Btn onClick={cerrarCaja} bg={T.navy} full icon={Lock} style={{padding:'16px',fontSize:14,boxShadow:'0 4px 0 rgba(0,0,0,0.25)'}}>
-            Cerrar Caja del Día
+            Cerrar Caja del Dia
           </Btn>
-        ):(
-          <Card style={{background:T.forestLight,textAlign:'center',padding:20,borderRadius:24}}>
-            <CheckCircle size={26} color={T.forest} strokeWidth={1.75} style={{margin:'0 auto'}}/>
-            <p style={{fontSize:15,fontWeight:700,color:T.forest,marginTop:8}}>Caja cerrada</p>
-          </Card>
+        ) : (
+          <>
+            <Card style={{background:T.forestLight,textAlign:'center',padding:20,borderRadius:24,marginBottom:12}}>
+              <CheckCircle size={26} color={T.forest} strokeWidth={1.75} style={{margin:'0 auto'}}/>
+              <p style={{fontSize:15,fontWeight:700,color:T.forest,marginTop:8}}>Caja cerrada</p>
+            </Card>
+            <button onClick={reabrirCaja} style={{
+              background:'none',border:'none',width:'100%',padding:'12px',
+              fontSize:13,fontWeight:600,color:T.muted,cursor:'pointer',textAlign:'center',
+              WebkitTapHighlightColor:'transparent',
+            }}>
+              Te equivocaste? Reabrir caja de hoy
+            </button>
+          </>
         )}
 
         <BottomNav pantalla={pantalla} go={go}/>
