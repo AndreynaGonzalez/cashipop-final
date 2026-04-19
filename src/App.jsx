@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { supabase, fetchGastos, fetchIngresos, insertGasto, deleteGasto } from './supabase'
 import {
   Home, Receipt, BarChart3, CalendarDays,
   DollarSign, Landmark, Smartphone, Banknote, Bike, Zap,
@@ -654,6 +655,9 @@ export default function App() {
   const [liveTranscript, setLiveTranscript] = useState('')
   const [transcriptFinal, setTranscriptFinal] = useState('')
   const [editingIdx, setEditingIdx] = useState(null)
+  const [dbGastos,   setDbGastos]   = useState([])
+  const [dbIngresos, setDbIngresos] = useState([])
+  const [dbLoaded,   setDbLoaded]   = useState(false)
 
   const fileRef      = useRef(null)
   const gastoFileRef = useRef(null)
@@ -664,6 +668,15 @@ export default function App() {
   const go        = useCallback(p => setPantalla(p), [])
   const showToast = useCallback((msg, ms=2500) => {
     setToast(msg); setTimeout(()=>setToast(''), ms)
+  }, [])
+
+  // ── Cargar datos de Supabase ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!supabase) { setDbLoaded(true); return }
+    Promise.all([fetchGastos(), fetchIngresos()]).then(([g, i]) => {
+      setDbGastos(g); setDbIngresos(i); setDbLoaded(true)
+      console.log(`Supabase: ${g.length} gastos, ${i.length} ingresos`)
+    })
   }, [])
 
   // ── Init ─────────────────────────────────────────────────────────────────────
@@ -722,8 +735,19 @@ export default function App() {
   }
 
   function _commitGasto(g) {
-    const nueva = {...data, gastos:[...data.gastos,{...g, concepto: capitalizar(g.concepto), id:Date.now()+Math.random()}]}
+    const entry = {...g, concepto: capitalizar(g.concepto), id:Date.now()+Math.random()}
+    const nueva = {...data, gastos:[...data.gastos, entry]}
     setData(nueva); guardarData(nueva)
+    // Sync to Supabase
+    insertGasto({
+      fecha: data.fecha,
+      concepto: entry.concepto,
+      monto: entry.moneda === 'USD' ? entry.monto : (parseFloat(entry.monto) / data.tasa),
+      moneda: entry.moneda,
+      categoria: entry.categoria || 'Insumos',
+    }).then(row => {
+      if (row) setDbGastos(prev => [row, ...prev])
+    })
     return nueva
   }
 
@@ -744,8 +768,25 @@ export default function App() {
 
   function commitPendGastos() {
     let d = data
-    for (const g of pendGastos) d={...d,gastos:[...d.gastos,{...g, concepto: capitalizar(g.concepto), id:Date.now()+Math.random()}]}
+    const toInsert = []
+    for (const g of pendGastos) {
+      const entry = {...g, concepto: capitalizar(g.concepto), id:Date.now()+Math.random()}
+      d = {...d, gastos:[...d.gastos, entry]}
+      toInsert.push({
+        fecha: data.fecha,
+        concepto: entry.concepto,
+        monto: parseFloat(entry.monto) || 0,
+        moneda: 'USD',
+        categoria: entry.categoria || 'Insumos',
+        notas: entry.bsOrig ? `Bs ${entry.bsOrig}` : null,
+      })
+    }
     setData(d); guardarData(d)
+    // Sync all to Supabase
+    Promise.all(toInsert.map(g => insertGasto(g))).then(rows => {
+      const valid = rows.filter(Boolean)
+      if (valid.length) setDbGastos(prev => [...valid, ...prev])
+    })
     setPendGastos([]); go('home')
     showToast('Listo! Todo anotado correctamente.', 3000)
   }
@@ -763,6 +804,10 @@ export default function App() {
       onYes: () => {
         const nueva = { ...data, gastos: data.gastos.filter(x => x.id !== g.id) }
         setData(nueva); guardarData(nueva)
+        // Sync delete to Supabase (if it has a numeric DB id)
+        if (typeof g.id === 'number' && g.id > 0 && g.id < 1e12) {
+          deleteGasto(g.id).then(() => setDbGastos(prev => prev.filter(x => x.id !== g.id)))
+        }
         setConfirm(null)
         showToast('Gasto eliminado')
       },
@@ -1871,40 +1916,67 @@ export default function App() {
   // HISTORIAL (tab)
   // ══════════════════════════════════════════════════════════
   if (pantalla === 'historial') {
-    // detalle de un día
+    // Agrupar datos de Supabase por fecha
+    const fechasMap = {}
+    for (const g of dbGastos) {
+      if (!fechasMap[g.fecha]) fechasMap[g.fecha] = { gastos: [], ingresos: [] }
+      fechasMap[g.fecha].gastos.push(g)
+    }
+    for (const i of dbIngresos) {
+      if (!fechasMap[i.fecha]) fechasMap[i.fecha] = { gastos: [], ingresos: [] }
+      fechasMap[i.fecha].ingresos.push(i)
+    }
+    const fechas = Object.keys(fechasMap).sort((a, b) => b.localeCompare(a))
+
+    // Detalle de un dia
     if (histItem) {
-      const hi=histItem; const tu2=totalUSD(hi.ingresos,hi.tasa); const tg2=totalGastosUSD(hi.gastos,hi.tasa); const net2=tu2-tg2
+      const hi = histItem
+      const tGas = redondear(hi.gastos.reduce((a, g) => a + parseFloat(g.monto), 0))
+      const tIng = redondear(hi.ingresos.reduce((a, i) => a + parseFloat(i.monto), 0))
+      const net2 = redondear(tIng - tGas)
       return (
         <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 96px',overflowY:'auto'}}>
           <InnerHeader title={fDate(hi.fecha)} onBack={()=>setHistItem(null)}/>
-          <div style={{display:'flex',justifyContent:'flex-end',marginBottom:16}}>
-            <WaBtn onClick={()=>enviarResumen(hi)}/>
-          </div>
           <div style={{background:'linear-gradient(145deg,#3D2539,#5E405B)',borderRadius:28,padding:'24px',marginBottom:18,boxShadow:'0 12px 40px rgba(0,0,0,0.15)'}}>
             <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'.08em'}}>NETO</p>
             <p style={{fontSize:36,fontWeight:900,color:'#fff',letterSpacing:'-.03em',marginTop:6}}>{fUSD(net2)}</p>
-            <p style={{fontSize:13,color:'rgba(255,255,255,0.3)',marginTop:4}}>{fBS(net2*hi.tasa)}</p>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:18}}>
             <Card style={{background:T.forestLight,padding:'16px'}}>
               <p style={{fontSize:10,fontWeight:700,color:T.forest}}>INGRESOS</p>
-              <p style={{fontSize:18,fontWeight:900,color:T.navy,marginTop:4}}>{fUSD(tu2)}</p>
+              <p style={{fontSize:18,fontWeight:900,color:T.navy,marginTop:4}}>{fUSD(tIng)}</p>
             </Card>
             <Card style={{background:T.roseLight,padding:'16px'}}>
               <p style={{fontSize:10,fontWeight:700,color:T.rose}}>GASTOS</p>
-              <p style={{fontSize:18,fontWeight:900,color:T.navy,marginTop:4}}>{fUSD(tg2)}</p>
+              <p style={{fontSize:18,fontWeight:900,color:T.navy,marginTop:4}}>{fUSD(tGas)}</p>
             </Card>
           </div>
-          {hi.gastos.length>0&&(
+          {hi.ingresos.length > 0 && (
+            <>
+              <Label>INGRESOS</Label>
+              <Card style={{borderRadius:24,marginBottom:16}}>
+                {hi.ingresos.map((ig, i) => (
+                  <div key={ig.id || i}>
+                    {i > 0 && <Sep/>}
+                    <div style={{display:'flex',justifyContent:'space-between'}}>
+                      <p style={{fontSize:14,fontWeight:600,color:T.navy}}>{ig.concepto}</p>
+                      <p style={{fontSize:14,fontWeight:800,color:T.forest}}>{ig.moneda === 'USD' ? fUSD(ig.monto) : fBS(ig.monto)}</p>
+                    </div>
+                  </div>
+                ))}
+              </Card>
+            </>
+          )}
+          {hi.gastos.length > 0 && (
             <>
               <Label>GASTOS</Label>
               <Card style={{borderRadius:24}}>
-                {hi.gastos.map((g,i)=>(
-                  <div key={g.id||i}>
-                    {i>0&&<Sep/>}
+                {hi.gastos.map((g, i) => (
+                  <div key={g.id || i}>
+                    {i > 0 && <Sep/>}
                     <div style={{display:'flex',justifyContent:'space-between'}}>
                       <p style={{fontSize:14,fontWeight:600,color:T.navy}}>{g.concepto}</p>
-                      <p style={{fontSize:14,fontWeight:800,color:T.rose}}>{g.moneda==='USD'?fUSD(g.monto):fBS(g.monto)}</p>
+                      <p style={{fontSize:14,fontWeight:800,color:T.rose}}>{fUSD(g.monto)}</p>
                     </div>
                   </div>
                 ))}
@@ -1916,33 +1988,37 @@ export default function App() {
       )
     }
 
-    // Lista de días
+    // Lista de dias
+    const hayDatos = fechas.length > 0 || historial.length > 0
     return (
       <div style={{minHeight:'100svh',background:T.bg,padding:'52px 20px 96px',overflowY:'auto'}}>
-        <h2 style={{fontSize:22,fontWeight:800,color:T.navy,letterSpacing:'-.025em',marginBottom:24}}>Historial</h2>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
+          <h2 style={{fontSize:22,fontWeight:800,color:T.navy,letterSpacing:'-.025em'}}>Historial</h2>
+          {dbLoaded && <p style={{fontSize:12,color:T.muted}}>{dbGastos.length}G · {dbIngresos.length}I</p>}
+        </div>
 
-        {historial.length===0?(
+        {!hayDatos ? (
           <Card style={{textAlign:'center',padding:48,borderRadius:32}}>
             <CalendarDays size={34} color={T.muted} strokeWidth={1.5} style={{margin:'0 auto'}}/>
             <p style={{fontSize:15,fontWeight:700,color:T.navy,marginTop:14}}>Sin registros anteriores</p>
-            <p style={{fontSize:13,color:T.sub,marginTop:6}}>Los cierres del día aparecerán aquí</p>
+            <p style={{fontSize:13,color:T.sub,marginTop:6}}>Los cierres del dia apareceran aqui</p>
           </Card>
-        ):(
+        ) : (
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
-            {historial.map((h,i)=>{
-              const tu2=totalUSD(h.ingresos,h.tasa); const tg2=totalGastosUSD(h.gastos,h.tasa); const net2=tu2-tg2
-              return(
-                <Card key={i} onClick={()=>setHistItem(h)} style={{cursor:'pointer',borderRadius:22,padding:'18px 20px'}}>
+            {fechas.map(fecha => {
+              const d = fechasMap[fecha]
+              const tG = redondear(d.gastos.reduce((a, g) => a + parseFloat(g.monto), 0))
+              const tI = redondear(d.ingresos.reduce((a, i) => a + parseFloat(i.monto), 0))
+              const net2 = redondear(tI - tG)
+              return (
+                <Card key={fecha} onClick={() => setHistItem({ fecha, ...d })} style={{cursor:'pointer',borderRadius:22,padding:'18px 20px'}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                     <div>
-                      <p style={{fontSize:14,fontWeight:700,color:T.navy}}>{fDate(h.fecha)}</p>
-                      <p style={{fontSize:12,color:T.muted,marginTop:3}}>Tasa Bs {h.tasa}  ·  {h.gastos.length} gasto(s)</p>
+                      <p style={{fontSize:14,fontWeight:700,color:T.navy}}>{fDate(fecha)}</p>
+                      <p style={{fontSize:12,color:T.muted,marginTop:3}}>{d.ingresos.length} ingreso(s) · {d.gastos.length} gasto(s)</p>
                     </div>
                     <div style={{textAlign:'right',display:'flex',alignItems:'center',gap:10}}>
-                      <div>
-                        <p style={{fontSize:18,fontWeight:900,color:net2>=0?T.forest:T.rose,letterSpacing:'-.02em'}}>{fUSD(net2)}</p>
-                        {h.cerrada&&<p style={{fontSize:10,fontWeight:700,color:T.forest,letterSpacing:'.04em',marginTop:2}}>CERRADA</p>}
-                      </div>
+                      <p style={{fontSize:18,fontWeight:900,color:net2 >= 0 ? T.forest : T.rose,letterSpacing:'-.02em'}}>{fUSD(net2)}</p>
                       <ChevronRight size={16} color={T.muted} strokeWidth={1.75}/>
                     </div>
                   </div>
