@@ -441,14 +441,22 @@ async function procesarFotoComoGasto(file, tasa) {
 
 // ─── Formato ──────────────────────────────────────────────────────────────────
 function formatMoney(v) {
-  const num = redondear(Math.abs(parseFloat(v) || 0))
-  const [int, dec = '00'] = num.toFixed(2).split('.')
+  const raw = Number(v) || 0
+  const num = Math.abs(Math.round(raw * 100) / 100)
+  const fixed = num.toFixed(2)
+  const [int, dec] = fixed.split('.')
   const miles = int.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
   return `${miles},${dec}`
 }
 
 const fUSD = v => `$ ${formatMoney(v)}`
 const fBS  = v => `Bs ${formatMoney(v)}`
+
+// Convierte un monto de DB a USD segun su moneda
+function toUSD(monto, moneda, tasa) {
+  const m = Number(monto) || 0
+  return moneda === 'BS' ? redondear(m / tasa) : redondear(m)
+}
 const fDate = iso => {
   const [y,m,d] = iso.split('-')
   const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
@@ -1931,8 +1939,8 @@ export default function App() {
     // Detalle de un dia
     if (histItem) {
       const hi = histItem
-      const tGas = redondear(hi.gastos.reduce((a, g) => a + parseFloat(g.monto), 0))
-      const tIng = redondear(hi.ingresos.reduce((a, i) => a + parseFloat(i.monto), 0))
+      const tGas = redondear(hi.gastos.reduce((a, g) => a + toUSD(g.monto, g.moneda, data.tasa), 0))
+      const tIng = redondear(hi.ingresos.reduce((a, i) => a + toUSD(i.monto, i.moneda, data.tasa), 0))
       const net2 = redondear(tIng - tGas)
       return (
         <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 96px',overflowY:'auto'}}>
@@ -1958,9 +1966,12 @@ export default function App() {
                 {hi.ingresos.map((ig, i) => (
                   <div key={ig.id || i}>
                     {i > 0 && <Sep/>}
-                    <div style={{display:'flex',justifyContent:'space-between'}}>
-                      <p style={{fontSize:14,fontWeight:600,color:T.navy}}>{ig.concepto}</p>
-                      <p style={{fontSize:14,fontWeight:800,color:T.forest}}>{ig.moneda === 'USD' ? fUSD(ig.monto) : fBS(ig.monto)}</p>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <div>
+                        <p style={{fontSize:14,fontWeight:600,color:T.navy}}>{ig.concepto}</p>
+                        {ig.moneda === 'BS' && <p style={{fontSize:11,color:T.muted,marginTop:2}}>{fBS(ig.monto)}</p>}
+                      </div>
+                      <p style={{fontSize:14,fontWeight:800,color:T.forest}}>{fUSD(toUSD(ig.monto, ig.moneda, data.tasa))}</p>
                     </div>
                   </div>
                 ))}
@@ -1974,9 +1985,12 @@ export default function App() {
                 {hi.gastos.map((g, i) => (
                   <div key={g.id || i}>
                     {i > 0 && <Sep/>}
-                    <div style={{display:'flex',justifyContent:'space-between'}}>
-                      <p style={{fontSize:14,fontWeight:600,color:T.navy}}>{g.concepto}</p>
-                      <p style={{fontSize:14,fontWeight:800,color:T.rose}}>{fUSD(g.monto)}</p>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <div>
+                        <p style={{fontSize:14,fontWeight:600,color:T.navy}}>{g.concepto}</p>
+                        {g.moneda === 'BS' && <p style={{fontSize:11,color:T.muted,marginTop:2}}>{fBS(g.monto)}</p>}
+                      </div>
+                      <p style={{fontSize:14,fontWeight:800,color:T.rose}}>{fUSD(toUSD(g.monto, g.moneda, data.tasa))}</p>
                     </div>
                   </div>
                 ))}
@@ -2007,8 +2021,8 @@ export default function App() {
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
             {fechas.map(fecha => {
               const d = fechasMap[fecha]
-              const tG = redondear(d.gastos.reduce((a, g) => a + parseFloat(g.monto), 0))
-              const tI = redondear(d.ingresos.reduce((a, i) => a + parseFloat(i.monto), 0))
+              const tG = redondear(d.gastos.reduce((a, g) => a + toUSD(g.monto, g.moneda, data.tasa), 0))
+              const tI = redondear(d.ingresos.reduce((a, i) => a + toUSD(i.monto, i.moneda, data.tasa), 0))
               const net2 = redondear(tI - tG)
               return (
                 <Card key={fecha} onClick={() => setHistItem({ fecha, ...d })} style={{cursor:'pointer',borderRadius:22,padding:'18px 20px'}}>
