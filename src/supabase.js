@@ -84,6 +84,18 @@ export async function fetchIngresos() {
   return data
 }
 
+export async function deleteIngresosByFecha(fecha) {
+  if (!supabase) return
+  const { error } = await supabase.from('ingresos').delete().eq('fecha', fecha)
+  if (error) console.error('deleteIngresosByFecha:', error)
+}
+
+export async function deleteGastosByFecha(fecha) {
+  if (!supabase) return
+  const { error } = await supabase.from('gastos').delete().eq('fecha', fecha)
+  if (error) console.error('deleteGastosByFecha:', error)
+}
+
 export async function insertIngreso(ingreso) {
   if (!supabase) return null
   const row = {

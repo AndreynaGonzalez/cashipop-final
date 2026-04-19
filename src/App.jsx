@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { supabase, fetchGastos, fetchIngresos, insertGasto, deleteGasto, signIn, signUp, signOut, onAuthChange, getSession } from './supabase'
+import { supabase, fetchGastos, fetchIngresos, insertGasto, deleteGasto, deleteIngresosByFecha, deleteGastosByFecha, insertIngreso, signIn, signUp, signOut, onAuthChange, getSession } from './supabase'
 import {
   Home, Receipt, BarChart3, CalendarDays, PieChart as PieIcon,
   DollarSign, Landmark, Smartphone, Banknote, Bike, Zap,
@@ -680,6 +680,7 @@ export default function App() {
   const [liveTranscript, setLiveTranscript] = useState('')
   const [transcriptFinal, setTranscriptFinal] = useState('')
   const [editingIdx, setEditingIdx] = useState(null)
+  const [fechaCierre, setFechaCierre] = useState(hoy())
   const [dbGastos,   setDbGastos]   = useState([])
   const [dbIngresos, setDbIngresos] = useState([])
   const [dbLoaded,   setDbLoaded]   = useState(false)
@@ -848,11 +849,40 @@ export default function App() {
     })
   }
 
-  function cerrarCaja() {
-    const nueva={...data,cerrada:true}
+  async function cerrarCaja() {
+    const fecha = fechaCierre || hoy()
+    const nueva = { ...data, fecha, cerrada: true }
     setData(nueva); guardarData(nueva)
     archivarData(nueva); setHistorial(cargarHistorial())
-    setConfetti(true); setTimeout(()=>setConfetti(false),3500)
+
+    // Upsert ingresos a Supabase: borrar los de esa fecha y reinsertar
+    if (supabase) {
+      await deleteIngresosByFecha(fecha)
+      const campos = [
+        { key: 'bicentenario', concepto: 'Bicentenario', cat: 'Bancos', mon: 'BS' },
+        { key: 'bancaribe', concepto: 'Bancaribe', cat: 'Bancos', mon: 'BS' },
+        { key: 'banesco', concepto: 'Banesco', cat: 'Bancos', mon: 'BS' },
+        { key: 'bancamiga', concepto: 'Bancamiga', cat: 'Bancos', mon: 'BS' },
+        { key: 'pagos_dia', concepto: 'Pagomovil', cat: 'Pagos Del Dia', mon: 'BS' },
+        { key: 'efectivo_bs', concepto: 'Efectivo Bolivares', cat: 'Efectivo', mon: 'BS' },
+        { key: 'delivery', concepto: 'Delivery', cat: 'Delivery', mon: 'BS' },
+        { key: 'pedidosya_usd', concepto: 'Pedidos Ya Prepago', cat: 'Delivery', mon: 'USD' },
+        { key: 'pedidosya_bs', concepto: 'Pedidos Ya Efectivo', cat: 'Delivery', mon: 'BS' },
+        { key: 'divisas_usd', concepto: 'Divisas', cat: 'Efectivo', mon: 'USD' },
+        { key: 'cuentas_cobrar', concepto: 'Cuentas Por Cobrar', cat: 'Por Cobrar', mon: 'USD' },
+      ]
+      const rows = campos
+        .filter(c => n(nueva.ingresos[c.key]) > 0)
+        .map(c => ({ fecha, concepto: c.concepto, monto: n(nueva.ingresos[c.key]), moneda: c.mon, categoria: c.cat, notas: `Cierre ${fecha}` }))
+      if (rows.length) {
+        await Promise.all(rows.map(r => insertIngreso(r)))
+      }
+      // Refresh DB data
+      const [g, i] = await Promise.all([fetchGastos(), fetchIngresos()])
+      setDbGastos(g); setDbIngresos(i)
+    }
+
+    setConfetti(true); setTimeout(() => setConfetti(false), 3500)
     showToast('Caja cerrada correctamente')
   }
 
@@ -860,6 +890,51 @@ export default function App() {
     const nueva = { ...data, cerrada: false }
     setData(nueva); guardarData(nueva)
     showToast('No pasa nada, Arcelia. Corrijamos los numeros juntos.', 3500)
+  }
+
+  // Cargar cierre de un dia pasado para editar
+  function editarCierreHistorico(fecha, ingresosDelDia) {
+    // Mapear ingresos de Supabase a los campos del formulario
+    const campos = { bicentenario:'',bancaribe:'',banesco:'',bancamiga:'',pagos_dia:'',efectivo_bs:'',delivery:'',pedidosya_usd:'',pedidosya_bs:'',divisas_usd:'',cuentas_cobrar:'' }
+    const mapeo = {
+      'Bicentenario':'bicentenario','Bancaribe':'bancaribe','Banesco':'banesco',
+      'Bancamiga':'bancamiga','Pagomovil':'pagos_dia','Efectivo Bolivares':'efectivo_bs',
+      'Delivery':'delivery','Pedidos Ya Prepago':'pedidosya_usd','Pedidos Ya Efectivo':'pedidosya_bs',
+      'Divisas':'divisas_usd','Cuentas Por Cobrar':'cuentas_cobrar','Cuentas Por Cobrar Usd':'cuentas_cobrar',
+      'Cuentas Por Cobrar Bs':'cuentas_cobrar',
+    }
+    for (const ig of ingresosDelDia) {
+      const key = mapeo[ig.concepto]
+      if (key) campos[key] = String(ig.monto)
+    }
+    const nueva = { ...data, fecha, ingresos: campos, cerrada: false }
+    setData(nueva); guardarData(nueva)
+    setFechaCierre(fecha)
+    setHistItem(null)
+    go('ingresos')
+    showToast(`Editando cierre del ${fDate(fecha)}`, 3000)
+  }
+
+  async function borrarCierreHistorico(fecha) {
+    setConfirm({
+      title: 'Borrar cierre?',
+      body: <p style={{fontSize:15,color:T.sub,textAlign:'center',lineHeight:1.6}}>
+        Estas segura de borrar el cierre del <strong style={{color:T.navy}}>{fDate(fecha)}</strong>? Se eliminaran todos los ingresos y gastos de ese dia.
+      </p>,
+      yesLabel: 'Si, borrar todo',
+      noLabel: 'No, dejarlo',
+      yesColor: T.rose,
+      onYes: async () => {
+        if (supabase) {
+          await deleteIngresosByFecha(fecha)
+          await deleteGastosByFecha(fecha)
+          const [g, i] = await Promise.all([fetchGastos(), fetchIngresos()])
+          setDbGastos(g); setDbIngresos(i)
+        }
+        setConfirm(null); setHistItem(null)
+        showToast('Cierre eliminado')
+      },
+    })
   }
 
   // ── Escanear factura como GASTO ───────────────────────────────────────────────
@@ -1951,7 +2026,11 @@ export default function App() {
           <h2 style={{fontSize:22,fontWeight:800,color:T.navy,letterSpacing:'-.025em'}}>Cierre de Caja</h2>
           <WaBtn onClick={()=>enviarResumen()}/>
         </div>
-        <p style={{fontSize:12,color:T.muted,marginBottom:20,letterSpacing:'.02em'}}>{fDate(data.fecha)}  ·  Tasa Bs {data.tasa}</p>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
+          <input type="date" value={fechaCierre} onChange={e => setFechaCierre(e.target.value)} max={hoy()}
+            style={{flex:1,height:38,fontSize:14,fontWeight:600,color:T.navy,background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:12,padding:'0 12px',outline:'none'}}/>
+          <span style={{fontSize:12,color:T.muted}}>Tasa Bs {data.tasa}</span>
+        </div>
 
         {/* Entrada dual: Foto o Manual */}
         {!tieneIngresos && !data.cerrada && (
@@ -2291,6 +2370,16 @@ export default function App() {
       return (
         <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 96px',overflowY:'auto'}}>
           <InnerHeader title={fDate(hi.fecha)} onBack={()=>setHistItem(null)}/>
+
+          {/* Acciones de edicion */}
+          <div style={{display:'flex',gap:8,marginBottom:18}}>
+            <Btn onClick={()=>editarCierreHistorico(hi.fecha, hi.ingresos)} bg={T.cobaltLight} color={T.brand} style={{flex:1,boxShadow:'none',padding:'12px',fontSize:13}} icon={Edit3}>
+              Editar cierre
+            </Btn>
+            <Btn onClick={()=>borrarCierreHistorico(hi.fecha)} bg={T.roseLight} color={T.rose} style={{flex:1,boxShadow:'none',padding:'12px',fontSize:13}} icon={Trash2}>
+              Borrar dia
+            </Btn>
+          </div>
           <div style={{background:'linear-gradient(145deg,#3D2539,#5E405B)',borderRadius:28,padding:'24px',marginBottom:18,boxShadow:'0 12px 40px rgba(0,0,0,0.15)'}}>
             <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'.08em'}}>NETO</p>
             <p style={{fontSize:36,fontWeight:900,color:'#fff',letterSpacing:'-.03em',marginTop:6}}>{fUSD(net2)}</p>
@@ -2344,6 +2433,7 @@ export default function App() {
             </>
           )}
           <BottomNav pantalla={pantalla} go={go}/>
+          <Confirm title={confirm?.title} msg={confirm?.msg} onYes={confirm?.onYes} onNo={()=>setConfirm(null)} yesLabel={confirm?.yesLabel} noLabel={confirm?.noLabel} yesColor={confirm?.yesColor}>{confirm?.body}</Confirm>
         </div>
       )
     }
