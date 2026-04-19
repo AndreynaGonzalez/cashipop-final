@@ -8,28 +8,29 @@ import {
   X,
 } from 'lucide-react'
 
-// ─── Tokens de diseño ─────────────────────────────────────────────────────────
+// ─── Tokens de diseño — Andino Pop Brand ──────────────────────────────────────
 const T = {
-  bg:          '#F9F9F9',   // fondo hueso
+  bg:          '#FFF1DC',    // fondo cálido oficial
   surface:     '#FFFFFF',
-  border:      'rgba(0,0,0,0.07)',
-  navy:        '#1A1A1A',
-  sub:         '#6B7280',
-  muted:       '#B0B7C3',
+  border:      'rgba(94,64,91,0.08)',
+  navy:        '#5E405B',    // texto principal (brand)
+  sub:         '#7D6279',
+  muted:       '#B8A3B5',
   forest:      '#2D6A4F',
   forestLight: '#E8F5EE',
-  cobalt:      '#1D4ED8',
-  cobaltLight: '#EEF3FD',
-  rose:        '#BE123C',
-  roseLight:   '#FFF0F3',
-  amber:       '#B45309',
-  amberLight:  '#FEF7EC',
+  cobalt:      '#5E405B',    // primario = brand
+  cobaltLight: '#F5ECF4',
+  rose:        '#FF7752',    // alertas/errores
+  roseLight:   '#FFF0EB',
+  amber:       '#FFB752',    // acentos/acciones
+  amberLight:  '#FFF7E8',
   wa:          '#25D366',
-  brand:       '#5E405B',    // Andino Pop títulos
-  brandGold:   '#FFB752',    // Andino Pop acentos
-  // Sombras boutique: profundas pero ultra difuminadas
-  shadowCard:  '0 2px 40px rgba(0,0,0,0.07)',
-  shadowNav:   '0 -1px 0 rgba(0,0,0,0.05)',
+  brand:       '#5E405B',
+  brandGold:   '#FFB752',
+  alert:       '#FF7752',
+  // Sombras boutique
+  shadowCard:  '0 2px 32px rgba(94,64,91,0.06)',
+  shadowNav:   '0 -1px 0 rgba(94,64,91,0.05)',
 }
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
@@ -459,7 +460,7 @@ const fDate = iso => {
 
 function Confetti({ active }) {
   if (!active) return null
-  const ps = Array.from({length:36},(_,i)=>({id:i,left:`${Math.random()*100}%`,color:[T.forest,T.cobalt,T.amber,'#7C3AED','#BE123C'][i%5],delay:`${Math.random()*.6}s`,dur:`${1.4+Math.random()*.8}s`,w:`${6+Math.random()*7}px`}))
+  const ps = Array.from({length:36},(_,i)=>({id:i,left:`${Math.random()*100}%`,color:[T.forest,T.brand,T.brandGold,T.alert,'#7C3AED'][i%5],delay:`${Math.random()*.6}s`,dur:`${1.4+Math.random()*.8}s`,w:`${6+Math.random()*7}px`}))
   return (
     <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:9999,overflow:'hidden'}}>
       {ps.map(p=><div key={p.id} style={{position:'absolute',top:'-20px',left:p.left,width:p.w,height:p.w,borderRadius:'3px',background:p.color,animation:`cf ${p.dur} ${p.delay} ease-in forwards`}}/>)}
@@ -607,7 +608,7 @@ function BottomNav({ pantalla, go }) {
             display:'flex', flexDirection:'column',
             alignItems:'center', gap:4,
             cursor:'pointer',
-            color: active ? T.cobalt : T.muted,
+            color: active ? T.brand : T.muted,
             WebkitTapHighlightColor:'transparent',
           }}>
             <Icon size={22} strokeWidth={active ? 2 : 1.5}/>
@@ -1402,7 +1403,7 @@ export default function App() {
         </div>
 
         {/* OCR */}
-        <Card onClick={()=>fileRef.current?.click()} style={{marginBottom:24,background:`linear-gradient(135deg,#1e3a5f,${T.cobalt})`,border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:14,padding:'18px 20px',borderRadius:24}}>
+        <Card onClick={()=>fileRef.current?.click()} style={{marginBottom:24,background:`linear-gradient(135deg,#3D2539,${T.brand})`,border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:14,padding:'18px 20px',borderRadius:24}}>
           <div style={{width:46,height:46,borderRadius:13,background:'rgba(255,255,255,0.14)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
             <Camera size={22} color='#fff' strokeWidth={1.75}/>
           </div>
@@ -1457,7 +1458,7 @@ export default function App() {
       <InnerHeader title="Nuevo Gasto" onBack={()=>go('gastos')}/>
 
       {/* Dictado múltiple */}
-      <Card style={{marginBottom:20,background:campoVoz==='g:multiple'?'#0F172A':procesandoVoz?T.cobaltLight:transcriptFinal?T.forestLight:T.cobaltLight,border:`1px solid ${campoVoz==='g:multiple'?'rgba(255,255,255,0.1)':T.cobalt}22`,transition:'all .3s'}}>
+      <Card style={{marginBottom:20,background:campoVoz==='g:multiple'?'#3D2539':procesandoVoz?T.cobaltLight:transcriptFinal?T.forestLight:T.cobaltLight,border:`1px solid ${campoVoz==='g:multiple'?'rgba(255,255,255,0.1)':T.cobalt}22`,transition:'all .3s'}}>
 
         {/* ── Estado: Grabando ── */}
         {campoVoz === 'g:multiple' ? (
@@ -1465,7 +1466,7 @@ export default function App() {
             {/* Ondas de audio */}
             <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:3,height:40,marginBottom:16}}>
               {[0,1,2,3,4,5,6].map(i => (
-                <div key={i} style={{width:4,borderRadius:2,background:'#EF4444',animation:`wave .8s ${i*0.1}s ease-in-out infinite alternate`}}/>
+                <div key={i} style={{width:4,borderRadius:2,background:'#FFB752',animation:`wave .8s ${i*0.1}s ease-in-out infinite alternate`}}/>
               ))}
             </div>
 
@@ -1592,19 +1593,19 @@ export default function App() {
         {/* Acciones terciarias: WA + Tasa */}
         <div style={{display:'flex',alignItems:'center',gap:8,marginTop:2}}>
           <WaBtn onClick={()=>enviarResumen()}/>
-          <button onClick={()=>go('tasa')} style={{background:T.amberLight,border:`1px solid ${T.amber}22`,borderRadius:13,padding:'7px 12px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:1,WebkitTapHighlightColor:'transparent'}}>
-            <span style={{fontSize:9,fontWeight:700,color:T.amber,letterSpacing:'.08em'}}>TASA BCV</span>
-            <span style={{fontSize:18,fontWeight:900,color:T.amber,letterSpacing:'-.02em'}}>Bs {data.tasa}</span>
+          <button onClick={()=>go('tasa')} style={{background:T.amberLight,border:`1px solid ${T.brandGold}33`,borderRadius:13,padding:'7px 12px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:1,WebkitTapHighlightColor:'transparent'}}>
+            <span style={{fontSize:9,fontWeight:700,color:T.brand,letterSpacing:'.08em'}}>TASA BCV</span>
+            <span style={{fontSize:18,fontWeight:900,color:T.brand,letterSpacing:'-.02em'}}>Bs {data.tasa}</span>
           </button>
         </div>
       </div>
 
       {/* Tarjeta neto — gradiente oscuro */}
-      <div style={{background:'linear-gradient(145deg,#0F2027,#1a3a4c)',borderRadius:32,padding:'30px 26px',marginBottom:16,boxShadow:'0 16px 48px rgba(0,0,0,0.18)'}}>
+      <div style={{background:'linear-gradient(145deg,#3D2539,#5E405B)',borderRadius:32,padding:'30px 26px',marginBottom:16,boxShadow:'0 16px 48px rgba(0,0,0,0.18)'}}>
         <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'.1em'}}>NETO DEL DÍA</p>
         <p style={{fontSize:42,fontWeight:900,color:'#fff',letterSpacing:'-.035em',lineHeight:1,marginTop:8}}>{fUSD(neto)}</p>
         <p style={{fontSize:13,color:'rgba(255,255,255,0.3)',marginTop:7}}>{fBS(neto*data.tasa)}</p>
-        {cc>0&&<p style={{fontSize:12,color:'rgba(255,200,100,0.65)',marginTop:6}}>+ {fUSD(cc)} pendiente por cobrar</p>}
+        {cc>0&&<p style={{fontSize:12,color:'#FFB752',marginTop:6}}>+ {fUSD(cc)} pendiente por cobrar</p>}
       </div>
 
       {/* Mini cards ingresos / gastos */}
@@ -1621,41 +1622,41 @@ export default function App() {
         </Card>
       </div>
 
-      {/* Acciones rápidas */}
+      {/* Acciones rapidas */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
         <button onClick={()=>{go('nuevoGasto');setTimeout(()=>iniciarVoz('g:multiple'),300)}} style={{
-          background:T.cobalt, color:'#fff', border:'none',
+          background:T.brandGold, color:T.brand, border:'none',
           borderRadius:20, padding:'20px 16px', width:'100%',
           cursor:'pointer', display:'flex', flexDirection:'column',
           alignItems:'center', gap:10,
-          boxShadow:`0 5px 0 ${T.cobalt}55`,
+          boxShadow:'0 5px 0 #E5A040',
           WebkitTapHighlightColor:'transparent',
           transition:'transform .08s, box-shadow .08s',
         }}
-          onPointerDown={e=>{e.currentTarget.style.transform='translateY(3px)';e.currentTarget.style.boxShadow=`0 2px 0 ${T.cobalt}55`}}
-          onPointerUp={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow=`0 5px 0 ${T.cobalt}55`}}
-          onPointerLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow=`0 5px 0 ${T.cobalt}55`}}
+          onPointerDown={e=>{e.currentTarget.style.transform='translateY(3px)';e.currentTarget.style.boxShadow='0 2px 0 #E5A040'}}
+          onPointerUp={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 #E5A040'}}
+          onPointerLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 #E5A040'}}
         >
-          <div style={{width:44,height:44,borderRadius:14,background:'rgba(255,255,255,0.15)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <Mic size={22} color='#fff' strokeWidth={1.75}/>
+          <div style={{width:44,height:44,borderRadius:14,background:'rgba(94,64,91,0.12)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <Mic size={22} color={T.brand} strokeWidth={1.75}/>
           </div>
           <span style={{fontSize:14,fontWeight:800}}>Dictar gastos</span>
         </button>
 
         <button onClick={()=>homeFileRef.current?.click()} style={{
-          background:T.navy, color:'#fff', border:'none',
+          background:T.brand, color:'#fff', border:'none',
           borderRadius:20, padding:'20px 16px', width:'100%',
           cursor:'pointer', display:'flex', flexDirection:'column',
           alignItems:'center', gap:10,
-          boxShadow:'0 5px 0 rgba(0,0,0,0.3)',
+          boxShadow:'0 5px 0 #3D2539',
           WebkitTapHighlightColor:'transparent',
           transition:'transform .08s, box-shadow .08s',
         }}
-          onPointerDown={e=>{e.currentTarget.style.transform='translateY(3px)';e.currentTarget.style.boxShadow='0 2px 0 rgba(0,0,0,0.3)'}}
-          onPointerUp={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 rgba(0,0,0,0.3)'}}
-          onPointerLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 rgba(0,0,0,0.3)'}}
+          onPointerDown={e=>{e.currentTarget.style.transform='translateY(3px)';e.currentTarget.style.boxShadow='0 2px 0 #3D2539'}}
+          onPointerUp={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 #3D2539'}}
+          onPointerLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 #3D2539'}}
         >
-          <div style={{width:44,height:44,borderRadius:14,background:'rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{width:44,height:44,borderRadius:14,background:'rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center'}}>
             <Camera size={22} color='#fff' strokeWidth={1.75}/>
           </div>
           <span style={{fontSize:14,fontWeight:800}}>Escanear factura</span>
@@ -1756,15 +1757,15 @@ export default function App() {
         <p style={{fontSize:12,color:T.muted,marginBottom:24,letterSpacing:'.02em'}}>{fDate(data.fecha)}  ·  Tasa Bs {data.tasa}</p>
 
         {/* Tarjeta resumen principal */}
-        <div style={{background:'linear-gradient(145deg,#0F2027,#1a3a4c)',borderRadius:32,padding:'28px 24px',marginBottom:18,boxShadow:'0 16px 48px rgba(0,0,0,0.18)'}}>
+        <div style={{background:'linear-gradient(145deg,#3D2539,#5E405B)',borderRadius:32,padding:'28px 24px',marginBottom:18,boxShadow:'0 16px 48px rgba(0,0,0,0.18)'}}>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
             <div>
               <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'.08em'}}>INGRESOS</p>
-              <p style={{fontSize:21,fontWeight:900,color:'#6EE7B7',marginTop:5,letterSpacing:'-.02em'}}>{fUSD(tUSD)}</p>
+              <p style={{fontSize:21,fontWeight:900,color:'#FFB752',marginTop:5,letterSpacing:'-.02em'}}>{fUSD(tUSD)}</p>
             </div>
             <div>
               <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'.08em'}}>GASTOS</p>
-              <p style={{fontSize:21,fontWeight:900,color:'#FCA5A5',marginTop:5,letterSpacing:'-.02em'}}>{fUSD(tGas)}</p>
+              <p style={{fontSize:21,fontWeight:900,color:'#FF7752',marginTop:5,letterSpacing:'-.02em'}}>{fUSD(tGas)}</p>
             </div>
           </div>
           <div style={{borderTop:'1px solid rgba(255,255,255,0.1)',paddingTop:18,marginTop:18}}>
@@ -1772,8 +1773,8 @@ export default function App() {
             <p style={{fontSize:42,fontWeight:900,color:'#fff',letterSpacing:'-.035em',lineHeight:1.1,marginTop:8}}>{fUSD(neto)}</p>
             <p style={{fontSize:13,color:'rgba(255,255,255,0.3)',marginTop:6}}>{fBS(neto*data.tasa)}</p>
           </div>
-          {cc>0&&<div style={{marginTop:14,paddingTop:14,borderTop:'1px solid rgba(255,200,100,0.15)'}}>
-            <p style={{fontSize:12,color:'rgba(255,200,100,0.55)',fontWeight:600}}>POR COBRAR (no incluido): {fUSD(cc)}</p>
+          {cc>0&&<div style={{marginTop:14,paddingTop:14,borderTop:'1px solid rgba(255,183,82,0.25)'}}>
+            <p style={{fontSize:12,color:'#FFB752',fontWeight:600}}>POR COBRAR (no incluido): {fUSD(cc)}</p>
           </div>}
         </div>
 
@@ -1879,7 +1880,7 @@ export default function App() {
           <div style={{display:'flex',justifyContent:'flex-end',marginBottom:16}}>
             <WaBtn onClick={()=>enviarResumen(hi)}/>
           </div>
-          <div style={{background:'linear-gradient(145deg,#0F2027,#1a3a4c)',borderRadius:28,padding:'24px',marginBottom:18,boxShadow:'0 12px 40px rgba(0,0,0,0.15)'}}>
+          <div style={{background:'linear-gradient(145deg,#3D2539,#5E405B)',borderRadius:28,padding:'24px',marginBottom:18,boxShadow:'0 12px 40px rgba(0,0,0,0.15)'}}>
             <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'.08em'}}>NETO</p>
             <p style={{fontSize:36,fontWeight:900,color:'#fff',letterSpacing:'-.03em',marginTop:6}}>{fUSD(net2)}</p>
             <p style={{fontSize:13,color:'rgba(255,255,255,0.3)',marginTop:4}}>{fBS(net2*hi.tasa)}</p>
