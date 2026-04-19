@@ -157,9 +157,19 @@ async function procesarFotoConIA(file) {
   return match ? JSON.parse(match[0]) : null
 }
 
+// ─── Helpers de texto y números ───────────────────────────────────────────────
+function capitalizar(str) {
+  if (!str) return ''
+  return str.replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function redondear(v) {
+  return Math.round((parseFloat(v) || 0) * 100) / 100
+}
+
 // ─── Cálculos ─────────────────────────────────────────────────────────────────
 const n  = s => parseFloat(s) || 0
-const bs = (s, t) => n(s) / t
+const bs = (s, t) => redondear(n(s) / t)
 const us = s => n(s)
 
 function totalUSD(ing, tasa) {
@@ -171,9 +181,9 @@ function totalUSD(ing, tasa) {
 }
 
 function totalGastosUSD(gastos, tasa) {
-  return gastos.reduce((a,g)=>{
-    const m=n(g.monto); return a+(g.moneda==='USD'?m:m/tasa)
-  },0)
+  return redondear(gastos.reduce((a,g)=>{
+    const m=n(g.monto); return a+(g.moneda==='USD'?m:redondear(m/tasa))
+  },0))
 }
 
 // ─── Categorías ───────────────────────────────────────────────────────────────
@@ -302,15 +312,14 @@ function parsearSegmentoVoz(seg, tasa) {
   let montoUSD, bsOrig
 
   if (esUSD) {
-    montoUSD = rawAmt; bsOrig = null
+    montoUSD = redondear(rawAmt); bsOrig = null
   } else {
-    // BS (default si no hay indicación clara de USD)
-    bsOrig   = rawAmt
-    montoUSD = Math.round((rawAmt / tasa) * 100) / 100
+    bsOrig   = Math.round(rawAmt)
+    montoUSD = redondear(rawAmt / tasa)
   }
 
   return {
-    concepto:  rest,
+    concepto:  capitalizar(rest),
     monto:     String(montoUSD),
     moneda:    'USD',          // siempre USD después de la conversión
     bsOrig,                   // monto BS original (null si era USD)
@@ -334,7 +343,7 @@ function parsearVozMultiple(texto, tasa) {
 
 // ─── OpenRouter IA ────────────────────────────────────────────────────────────
 const OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_KEY || ''
-const SYSTEM_PROMPT = 'Contador Andino Pop. Tasa: 481.21. Si dice Bs, divide. Si dice $, mantiene. Entiende decimales. Separa items. Responde solo JSON: [{"c": "concepto", "m": 0.00}]'
+const SYSTEM_PROMPT = 'Contador Andino Pop. Tasa: 481.21. Si dice Bs, divide entre tasa y redondea a 2 decimales. Si dice $, mantiene. Numeros redondos se quedan redondos (20000 Bs / tasa = resultado redondeado). Capitaliza cada palabra del concepto. Responde solo JSON: [{"c": "Concepto", "m": 0.00}]'
 
 async function procesarGastoConIA(texto, tasa) {
   const prompt = SYSTEM_PROMPT.replace('481.21', String(tasa))
@@ -374,8 +383,14 @@ async function procesarGastoConIA(texto, tasa) {
 }
 
 // ─── Formato ──────────────────────────────────────────────────────────────────
-const fUSD = v => `$${(parseFloat(v)||0).toFixed(2)}`
-const fBS  = v => `Bs ${(parseFloat(v)||0).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2})}`
+const fUSD = v => {
+  const num = redondear(parseFloat(v) || 0)
+  return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+const fBS = v => {
+  const num = Math.round(parseFloat(v) || 0)
+  return `Bs ${num.toLocaleString('es-VE')}`
+}
 const fDate = iso => {
   const [y,m,d] = iso.split('-')
   const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
@@ -643,7 +658,7 @@ export default function App() {
   }
 
   function _commitGasto(g) {
-    const nueva = {...data, gastos:[...data.gastos,{...g,id:Date.now()+Math.random()}]}
+    const nueva = {...data, gastos:[...data.gastos,{...g, concepto: capitalizar(g.concepto), id:Date.now()+Math.random()}]}
     setData(nueva); guardarData(nueva)
     return nueva
   }
@@ -798,8 +813,8 @@ export default function App() {
             const items = await procesarGastoConIA(txt, data.tasa)
             if (items.length > 0) {
               const mapped = items.map((item, i) => ({
-                concepto: item.c,
-                monto: String(item.m),
+                concepto: capitalizar(item.c),
+                monto: String(redondear(item.m)),
                 moneda: 'USD',
                 bsOrig: null,
                 categoria: 'insumos',
