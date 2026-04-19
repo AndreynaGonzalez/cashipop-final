@@ -8,7 +8,7 @@ import {
   RefreshCw, ChevronRight, Edit3, CreditCard, Package,
   X, Lightbulb, Calendar,
 } from 'lucide-react'
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 
 // ─── Tokens de diseño — Andino Pop Brand ──────────────────────────────────────
 const T = {
@@ -2236,144 +2236,241 @@ export default function App() {
   // ══════════════════════════════════════════════════════════
   if (pantalla === 'metricas') {
     const PIE_COLORS = ['#FFB752','#5E405B','#2D6A4F','#FF7752','#7C3AED','#1D4ED8','#BE185D','#C2410C','#374151','#0891B2']
-
-    // Gastos por categoria
-    const catMap = {}
-    for (const g of dbGastos) {
-      const cat = g.categoria || 'Varios'
-      const usd = toUSD(g.monto, g.moneda, data.tasa)
-      catMap[cat] = (catMap[cat] || 0) + usd
-    }
-    const pieData = Object.entries(catMap)
-      .map(([name, value]) => ({ name, value: redondear(value) }))
-      .filter(d => d.value > 0)
-      .sort((a, b) => b.value - a.value)
-    const totalGastosDB = redondear(pieData.reduce((a, d) => a + d.value, 0))
-
-    // Balance real: ultimo cierre + ingresos hoy - gastos hoy
     const hoyStr = hoy()
-    const ingresosHoy = dbIngresos.filter(i => i.fecha === hoyStr).reduce((a, i) => a + toUSD(i.monto, i.moneda, data.tasa), 0)
-    const gastosHoy = dbGastos.filter(g => g.fecha === hoyStr).reduce((a, g) => a + toUSD(g.monto, g.moneda, data.tasa), 0)
-    const totalIngDB = redondear(dbIngresos.reduce((a, i) => a + toUSD(i.monto, i.moneda, data.tasa), 0))
-    const balanceReal = redondear(totalIngDB - totalGastosDB)
+    const tasa = data.tasa
 
-    // Dias pendientes esta semana
+    // ── Totales globales ──
+    const totalIngDB = redondear(dbIngresos.reduce((a, i) => a + toUSD(i.monto, i.moneda, tasa), 0))
+    const totalGasDB = redondear(dbGastos.reduce((a, g) => a + toUSD(g.monto, g.moneda, tasa), 0))
+    const balanceReal = redondear(totalIngDB - totalGasDB)
+
+    // ── Semana actual: lunes a hoy ──
     const ahora = new Date()
-    const lunes = new Date(ahora)
-    lunes.setDate(ahora.getDate() - ((ahora.getDay() + 6) % 7))
+    const lunes = new Date(ahora); lunes.setDate(ahora.getDate() - ((ahora.getDay() + 6) % 7))
+    const lunesStr = lunes.toISOString().slice(0, 10)
+    const ingSemana = redondear(dbIngresos.filter(i => i.fecha >= lunesStr && i.fecha <= hoyStr).reduce((a, i) => a + toUSD(i.monto, i.moneda, tasa), 0))
+    const gasSemana = redondear(dbGastos.filter(g => g.fecha >= lunesStr && g.fecha <= hoyStr).reduce((a, g) => a + toUSD(g.monto, g.moneda, tasa), 0))
+    const netoSemana = redondear(ingSemana - gasSemana)
+
+    // ── Dias pendientes ──
     const diasSemana = []
-    for (let d = new Date(lunes); d <= ahora; d.setDate(d.getDate() + 1)) {
-      diasSemana.push(d.toISOString().slice(0, 10))
-    }
+    for (let d = new Date(lunes); d <= ahora; d.setDate(d.getDate() + 1)) diasSemana.push(d.toISOString().slice(0, 10))
     const diasConCierre = new Set(dbIngresos.map(i => i.fecha))
     const diasPendientes = diasSemana.filter(d => !diasConCierre.has(d) && d !== hoyStr)
+    const diasNombre = ['Dom','Lun','Mar','Mie','Jue','Vie','Sab']
+    const diasNombreFull = ['Domingo','Lunes','Martes','Miercoles','Jueves','Viernes','Sabado']
 
-    // Coach: analisis por dia de la semana
-    const diasNombre = ['Domingo','Lunes','Martes','Miercoles','Jueves','Viernes','Sabado']
-    const gastoPorDia = [0,0,0,0,0,0,0]
-    const conteoPorDia = [0,0,0,0,0,0,0]
+    // ── Gastos por concepto (Top 5 fuga) ──
+    const concMap = {}
     for (const g of dbGastos) {
-      const d = new Date(g.fecha + 'T12:00:00')
-      const dow = d.getDay()
-      gastoPorDia[dow] += toUSD(g.monto, g.moneda, data.tasa)
-      conteoPorDia[dow]++
+      const c = g.concepto || 'Varios'
+      concMap[c] = (concMap[c] || 0) + toUSD(g.monto, g.moneda, tasa)
     }
-    let maxDia = 0
-    for (let i = 1; i < 7; i++) { if (gastoPorDia[i] > gastoPorDia[maxDia]) maxDia = i }
-    const topCat = pieData[0]?.name || 'Insumos'
-    const topCatPct = totalGastosDB > 0 ? Math.round((pieData[0]?.value || 0) / totalGastosDB * 100) : 0
+    const top5Fuga = Object.entries(concMap)
+      .map(([name, value]) => ({ name, value: redondear(value) }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5)
 
-    const consejos = [
-      `Los ${diasNombre[maxDia].toLowerCase()} son tu dia de mayor gasto (${fUSD(gastoPorDia[maxDia])} acumulado). Planifica con anticipacion.`,
-      `${topCat} representa el ${topCatPct}% de tus gastos totales. ${topCatPct > 40 ? 'Considera negociar con proveedores.' : 'Buen balance.'}`,
-      totalGastosDB > totalIngDB ? 'Los gastos superan los ingresos. Revisa los egresos no esenciales.' : 'Vas bien, los ingresos cubren los gastos.',
-    ]
-    const consejoIdx = Math.floor(Date.now() / 86400000) % consejos.length
+    // ── Gastos por categoria (pie) ──
+    const catMap = {}
+    for (const g of dbGastos) { catMap[g.categoria || 'Varios'] = (catMap[g.categoria || 'Varios'] || 0) + toUSD(g.monto, g.moneda, tasa) }
+    const pieData = Object.entries(catMap).map(([name, value]) => ({ name, value: redondear(value) })).filter(d => d.value > 0).sort((a, b) => b.value - a.value)
+
+    // ── Tendencia mensual (line chart) ──
+    const mesMap = {}
+    for (const i of dbIngresos) { const m = i.fecha.slice(0, 7); mesMap[m] = mesMap[m] || { mes: m, ing: 0, gas: 0 }; mesMap[m].ing += toUSD(i.monto, i.moneda, tasa) }
+    for (const g of dbGastos) { const m = g.fecha.slice(0, 7); mesMap[m] = mesMap[m] || { mes: m, ing: 0, gas: 0 }; mesMap[m].gas += toUSD(g.monto, g.moneda, tasa) }
+    const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+    const trendData = Object.values(mesMap).sort((a, b) => a.mes.localeCompare(b.mes)).map(d => ({
+      name: meses[parseInt(d.mes.slice(5)) - 1],
+      Ingresos: redondear(d.ing), Gastos: redondear(d.gas), Neto: redondear(d.ing - d.gas),
+    }))
+
+    // ── Coach IA predictivo ──
+    const gastoPorDia = [0,0,0,0,0,0,0]
+    for (const g of dbGastos) { gastoPorDia[new Date(g.fecha + 'T12:00:00').getDay()] += toUSD(g.monto, g.moneda, tasa) }
+    let maxDia = 0; for (let i = 1; i < 7; i++) { if (gastoPorDia[i] > gastoPorDia[maxDia]) maxDia = i }
+    const topCat = pieData[0]?.name || 'Insumos'
+    const topCatPct = totalGasDB > 0 ? Math.round((pieData[0]?.value || 0) / totalGasDB * 100) : 0
+
+    // Semana anterior para comparacion
+    const lunesAnt = new Date(lunes); lunesAnt.setDate(lunesAnt.getDate() - 7)
+    const domAnt = new Date(lunes); domAnt.setDate(domAnt.getDate() - 1)
+    const gasSemanaAnt = redondear(dbGastos.filter(g => g.fecha >= lunesAnt.toISOString().slice(0,10) && g.fecha <= domAnt.toISOString().slice(0,10)).reduce((a, g) => a + toUSD(g.monto, g.moneda, tasa), 0))
+    const cambioSemanal = gasSemanaAnt > 0 ? Math.round((gasSemana - gasSemanaAnt) / gasSemanaAnt * 100) : 0
+
+    const insights = []
+    if (maxDia > 0) insights.push(`Los ${diasNombreFull[maxDia].toLowerCase()} son tu dia de mayor gasto (${fUSD(gastoPorDia[maxDia])} acumulado). Planifica con anticipacion.`)
+    if (topCatPct > 30) insights.push(`${topCat} representa el ${topCatPct}% de tus gastos. ${topCatPct > 45 ? 'Busca alternativas de proveedor.' : 'Manten el control.'}`)
+    if (cambioSemanal < -10) insights.push(`Esta semana redujiste gastos un ${Math.abs(cambioSemanal)}% vs la anterior. Sigue asi.`)
+    else if (cambioSemanal > 20) insights.push(`Ojo: los gastos subieron un ${cambioSemanal}% esta semana vs la anterior.`)
+    if (balanceReal > 0) insights.push('El balance es positivo. El negocio va generando valor.')
+    else insights.push('Los gastos superan los ingresos acumulados. Revisa los egresos no esenciales.')
+    const insightIdx = Math.floor(Date.now() / 86400000) % insights.length
 
     return (
       <div style={{minHeight:'100svh',background:T.bg,padding:'52px 20px 96px',overflowY:'auto'}}>
         <h2 style={{fontSize:22,fontWeight:800,color:T.navy,letterSpacing:'-.025em',marginBottom:24}}>Metricas</h2>
 
-        {/* Balance real */}
-        <div style={{background:'linear-gradient(145deg,#3D2539,#5E405B)',borderRadius:28,padding:'26px 24px',marginBottom:16,boxShadow:'0 12px 40px rgba(94,64,91,0.18)'}}>
-          <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.45)',letterSpacing:'.1em'}}>BALANCE ACUMULADO</p>
-          <p style={{fontSize:38,fontWeight:900,color:'#fff',letterSpacing:'-.035em',lineHeight:1,marginTop:8}}>{fUSD(balanceReal)}</p>
-          <p style={{fontSize:12,color:'rgba(255,255,255,0.35)',marginTop:8}}>Ingresos {fUSD(totalIngDB)} - Gastos {fUSD(totalGastosDB)}</p>
-        </div>
+        {/* ── 1. SEMAFORO: Ventas vs Gastos semana ── */}
+        <Card style={{marginBottom:16,padding:'22px 20px'}}>
+          <Label>SEMANA ACTUAL</Label>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:16}}>
+            <div style={{background:T.forestLight,borderRadius:16,padding:'14px',textAlign:'center'}}>
+              <TrendingUp size={18} color={T.forest} strokeWidth={1.75} style={{margin:'0 auto 6px'}}/>
+              <p style={{fontSize:10,fontWeight:700,color:T.forest,letterSpacing:'.06em'}}>VENTAS</p>
+              <p style={{fontSize:20,fontWeight:900,color:T.navy,marginTop:4}}>{fUSD(ingSemana)}</p>
+            </div>
+            <div style={{background:T.roseLight,borderRadius:16,padding:'14px',textAlign:'center'}}>
+              <TrendingDown size={18} color={T.rose} strokeWidth={1.75} style={{margin:'0 auto 6px'}}/>
+              <p style={{fontSize:10,fontWeight:700,color:T.rose,letterSpacing:'.06em'}}>GASTOS</p>
+              <p style={{fontSize:20,fontWeight:900,color:T.navy,marginTop:4}}>{fUSD(gasSemana)}</p>
+            </div>
+          </div>
+          <div style={{background:netoSemana>=0?'#E8F5EE':'#FFF0EB',borderRadius:14,padding:'14px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontSize:13,fontWeight:700,color:netoSemana>=0?T.forest:T.rose}}>
+              {netoSemana >= 0 ? 'Ganancia neta' : 'Deficit neto'}
+            </span>
+            <span style={{fontSize:22,fontWeight:900,color:netoSemana>=0?T.forest:T.rose}}>{fUSD(netoSemana)}</span>
+          </div>
+        </Card>
 
-        {/* Dias pendientes */}
+        {/* ── 2. TOP 5 FUGA DE DINERO ── */}
+        <Card style={{marginBottom:16,padding:'20px'}}>
+          <Label>TOP 5 FUGA DE DINERO</Label>
+          {top5Fuga.length > 0 ? (
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {top5Fuga.map((d, i) => {
+                const pctBar = totalGasDB > 0 ? Math.min((d.value / totalGasDB) * 100, 100) : 0
+                return (
+                  <div key={d.name}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                      <span style={{fontSize:13,fontWeight:700,color:T.navy}}>{i + 1}. {d.name}</span>
+                      <span style={{fontSize:13,fontWeight:800,color:T.rose}}>{fUSD(d.value)}</span>
+                    </div>
+                    <div style={{height:6,background:T.border,borderRadius:3,overflow:'hidden'}}>
+                      <div style={{height:'100%',width:`${pctBar}%`,background:PIE_COLORS[i],borderRadius:3,transition:'width .3s'}}/>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : <p style={{fontSize:14,color:T.muted,textAlign:'center',padding:'20px 0'}}>Sin datos</p>}
+        </Card>
+
+        {/* ── 3. ALERTA CIERRES OLVIDADOS ── */}
         {diasPendientes.length > 0 && (
-          <Card style={{marginBottom:16,background:T.roseLight,border:`1px solid ${T.rose}22`}}>
-            <div style={{display:'flex',alignItems:'center',gap:10}}>
-              <Calendar size={20} color={T.rose} strokeWidth={1.75}/>
+          <Card style={{marginBottom:16,background:'#FFF0EB',border:`1px solid ${T.rose}20`,padding:'18px 20px'}}>
+            <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+              <div style={{width:36,height:36,borderRadius:10,background:T.rose,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <AlertCircle size={18} color='#fff' strokeWidth={1.75}/>
+              </div>
               <div>
-                <p style={{fontSize:14,fontWeight:700,color:T.rose}}>
-                  {diasPendientes.length === 1 ? 'Falta 1 dia' : `Faltan ${diasPendientes.length} dias`} por cerrar caja esta semana
+                <p style={{fontSize:14,fontWeight:800,color:T.rose,marginBottom:4}}>
+                  Arcelia, {diasPendientes.length === 1 ? 'falta el cierre del' : 'faltan los cierres del'}
                 </p>
-                <p style={{fontSize:12,color:T.sub,marginTop:2}}>{diasPendientes.map(d => fDate(d)).join(', ')}</p>
+                <p style={{fontSize:15,fontWeight:700,color:T.navy,lineHeight:1.5}}>
+                  {diasPendientes.map(d => {
+                    const dow = new Date(d + 'T12:00:00').getDay()
+                    return diasNombreFull[dow]
+                  }).join(' y ')}
+                </p>
+                <Btn onClick={()=>go('cierre')} bg={T.rose} style={{marginTop:12,padding:'10px 16px',fontSize:12}} icon={BarChart3}>
+                  Ir a cerrar caja
+                </Btn>
               </div>
             </div>
           </Card>
         )}
 
-        {/* Grafico de torta */}
+        {/* ── 4. COACH IA PREDICTIVO ── */}
+        <Card style={{marginBottom:16,background:`${T.brandGold}12`,border:`1px solid ${T.brandGold}25`,padding:'20px'}}>
+          <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+            <div style={{width:40,height:40,borderRadius:12,background:T.brandGold,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <Lightbulb size={20} color='#fff' strokeWidth={1.75}/>
+            </div>
+            <div style={{flex:1}}>
+              <p style={{fontSize:10,fontWeight:700,color:T.brandGold,letterSpacing:'.08em',marginBottom:8}}>INSIGHT DE ANDINO</p>
+              <p style={{fontSize:15,fontWeight:600,color:T.navy,lineHeight:1.5}}>{insights[insightIdx]}</p>
+              {cambioSemanal !== 0 && (
+                <div style={{display:'flex',alignItems:'center',gap:6,marginTop:10,background:T.surface,borderRadius:10,padding:'8px 12px'}}>
+                  {cambioSemanal > 0 ? <TrendingUp size={14} color={T.rose}/> : <TrendingDown size={14} color={T.forest}/>}
+                  <span style={{fontSize:12,fontWeight:700,color:cambioSemanal>0?T.rose:T.forest}}>
+                    {cambioSemanal > 0 ? '+' : ''}{cambioSemanal}% vs semana anterior
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+
+        {/* ── 5. TENDENCIA MENSUAL ── */}
+        {trendData.length > 0 && (
+          <Card style={{marginBottom:16,padding:'20px 12px 12px'}}>
+            <div style={{paddingLeft:8}}><Label>TENDENCIA MENSUAL</Label></div>
+            <div style={{height:200}}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trendData} margin={{top:5,right:10,left:-10,bottom:5}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false}/>
+                  <XAxis dataKey="name" tick={{fontSize:11,fill:T.muted,fontWeight:600}} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{fontSize:10,fill:T.muted}} axisLine={false} tickLine={false} tickFormatter={v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}/>
+                  <Tooltip formatter={v => fUSD(v)} contentStyle={{borderRadius:12,border:'none',boxShadow:'0 4px 20px rgba(0,0,0,0.1)',fontSize:13,fontWeight:600}}/>
+                  <Line type="monotone" dataKey="Ingresos" stroke={T.forest} strokeWidth={2.5} dot={{r:4,fill:T.forest}} activeDot={{r:6}}/>
+                  <Line type="monotone" dataKey="Gastos" stroke={T.rose} strokeWidth={2.5} dot={{r:4,fill:T.rose}} activeDot={{r:6}}/>
+                  <Line type="monotone" dataKey="Neto" stroke={T.brandGold} strokeWidth={2} strokeDasharray="5 5" dot={false}/>
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{display:'flex',justifyContent:'center',gap:16,marginTop:8}}>
+              <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:8,height:8,borderRadius:4,background:T.forest}}/><span style={{fontSize:11,color:T.muted,fontWeight:600}}>Ingresos</span></div>
+              <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:8,height:8,borderRadius:4,background:T.rose}}/><span style={{fontSize:11,color:T.muted,fontWeight:600}}>Gastos</span></div>
+              <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:12,height:2,background:T.brandGold}}/><span style={{fontSize:11,color:T.muted,fontWeight:600}}>Neto</span></div>
+            </div>
+          </Card>
+        )}
+
+        {/* ── PIE: Categorias ── */}
         <Card style={{marginBottom:16,padding:'20px 16px'}}>
           <Label>GASTOS POR CATEGORIA</Label>
           {pieData.length > 0 ? (
             <>
-              <div style={{height:220,marginBottom:8}}>
+              <div style={{height:200,marginBottom:8}}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={85} paddingAngle={3} stroke="none">
+                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={80} paddingAngle={3} stroke="none">
                       {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]}/>)}
                     </Pie>
                     <Tooltip formatter={v => fUSD(v)} contentStyle={{borderRadius:12,border:'none',boxShadow:'0 4px 20px rgba(0,0,0,0.1)',fontSize:13,fontWeight:600}}/>
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                {pieData.slice(0, 6).map((d, i) => {
-                  const pct = totalGastosDB > 0 ? Math.round(d.value / totalGastosDB * 100) : 0
-                  return (
-                    <div key={d.name} style={{display:'flex',alignItems:'center',gap:10}}>
-                      <div style={{width:10,height:10,borderRadius:3,background:PIE_COLORS[i % PIE_COLORS.length],flexShrink:0}}/>
-                      <span style={{fontSize:13,fontWeight:600,color:T.navy,flex:1}}>{d.name}</span>
-                      <span style={{fontSize:13,fontWeight:800,color:T.sub}}>{pct}%</span>
-                      <span style={{fontSize:13,fontWeight:700,color:T.navy}}>{fUSD(d.value)}</span>
-                    </div>
-                  )
-                })}
+              <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                {pieData.slice(0, 6).map((d, i) => (
+                  <div key={d.name} style={{display:'flex',alignItems:'center',gap:8}}>
+                    <div style={{width:8,height:8,borderRadius:2,background:PIE_COLORS[i % PIE_COLORS.length],flexShrink:0}}/>
+                    <span style={{fontSize:12,fontWeight:600,color:T.navy,flex:1}}>{d.name}</span>
+                    <span style={{fontSize:12,fontWeight:800,color:T.sub}}>{totalGasDB>0?Math.round(d.value/totalGasDB*100):0}%</span>
+                    <span style={{fontSize:12,fontWeight:700,color:T.navy}}>{fUSD(d.value)}</span>
+                  </div>
+                ))}
               </div>
             </>
-          ) : (
-            <p style={{fontSize:14,color:T.muted,textAlign:'center',padding:'30px 0'}}>Sin datos de gastos aun</p>
-          )}
+          ) : <p style={{fontSize:14,color:T.muted,textAlign:'center',padding:'30px 0'}}>Sin datos de gastos aun</p>}
         </Card>
 
-        {/* Coach financiero */}
-        <Card style={{marginBottom:16,background:`${T.brandGold}15`,border:`1px solid ${T.brandGold}30`}}>
-          <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
-            <div style={{width:36,height:36,borderRadius:10,background:T.brandGold,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-              <Lightbulb size={18} color='#fff' strokeWidth={1.75}/>
-            </div>
-            <div>
-              <p style={{fontSize:11,fontWeight:700,color:T.brandGold,letterSpacing:'.06em',marginBottom:6}}>CONSEJO DE ANDINO</p>
-              <p style={{fontSize:14,fontWeight:600,color:T.navy,lineHeight:1.5}}>{consejos[consejoIdx]}</p>
-            </div>
-          </div>
-        </Card>
-
-        {/* Resumen numerico */}
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-          <Card style={{padding:'16px',textAlign:'center'}}>
-            <p style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:'.06em'}}>REGISTROS</p>
-            <p style={{fontSize:24,fontWeight:900,color:T.navy,marginTop:4}}>{dbGastos.length + dbIngresos.length}</p>
-            <p style={{fontSize:11,color:T.muted,marginTop:2}}>{dbGastos.length}G · {dbIngresos.length}I</p>
+        {/* Mini stats */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+          <Card style={{padding:'14px 10px',textAlign:'center'}}>
+            <p style={{fontSize:9,fontWeight:700,color:T.muted,letterSpacing:'.06em'}}>REGISTROS</p>
+            <p style={{fontSize:20,fontWeight:900,color:T.navy,marginTop:3}}>{dbGastos.length + dbIngresos.length}</p>
           </Card>
-          <Card style={{padding:'16px',textAlign:'center'}}>
-            <p style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:'.06em'}}>CATEGORIAS</p>
-            <p style={{fontSize:24,fontWeight:900,color:T.navy,marginTop:4}}>{pieData.length}</p>
-            <p style={{fontSize:11,color:T.muted,marginTop:2}}>Top: {topCat}</p>
+          <Card style={{padding:'14px 10px',textAlign:'center'}}>
+            <p style={{fontSize:9,fontWeight:700,color:T.muted,letterSpacing:'.06em'}}>BALANCE</p>
+            <p style={{fontSize:20,fontWeight:900,color:balanceReal>=0?T.forest:T.rose,marginTop:3}}>{fUSD(balanceReal)}</p>
+          </Card>
+          <Card style={{padding:'14px 10px',textAlign:'center'}}>
+            <p style={{fontSize:9,fontWeight:700,color:T.muted,letterSpacing:'.06em'}}>CATEGORIAS</p>
+            <p style={{fontSize:20,fontWeight:900,color:T.navy,marginTop:3}}>{pieData.length}</p>
           </Card>
         </div>
 
