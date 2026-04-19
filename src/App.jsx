@@ -25,6 +25,8 @@ const T = {
   amber:       '#B45309',
   amberLight:  '#FEF7EC',
   wa:          '#25D366',
+  brand:       '#5E405B',    // Andino Pop títulos
+  brandGold:   '#FFB752',    // Andino Pop acentos
   // Sombras boutique: profundas pero ultra difuminadas
   shadowCard:  '0 2px 40px rgba(0,0,0,0.07)',
   shadowNav:   '0 -1px 0 rgba(0,0,0,0.05)',
@@ -158,10 +160,13 @@ async function procesarFotoConIA(file) {
 }
 
 // ─── Helpers de texto y números ───────────────────────────────────────────────
-function capitalizar(str) {
+function formatConcept(str) {
   if (!str) return ''
-  return str.replace(/\b\w/g, c => c.toUpperCase())
+  return str.trim().split(/\s+/).map(w =>
+    w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+  ).join(' ')
 }
+const capitalizar = formatConcept
 
 function redondear(v) {
   return Math.round((parseFloat(v) || 0) * 100) / 100
@@ -647,6 +652,7 @@ export default function App() {
   const [procesandoVoz, setProcesandoVoz] = useState(false)
   const [liveTranscript, setLiveTranscript] = useState('')
   const [transcriptFinal, setTranscriptFinal] = useState('')
+  const [editingIdx, setEditingIdx] = useState(null)
 
   const fileRef      = useRef(null)
   const gastoFileRef = useRef(null)
@@ -1255,9 +1261,10 @@ export default function App() {
   // ══════════════════════════════════════════════════════════
   // CONFIRMAR VOZ MÚLTIPLE
   // ══════════════════════════════════════════════════════════
-  function editPendMonto(idx, campo, valor) {
+  function editPendField(idx, campo, valor) {
     setPendGastos(prev => prev.map((g, i) => {
       if (i !== idx) return g
+      if (campo === 'concepto') return { ...g, concepto: valor }
       if (campo === 'usd') {
         const usd = redondear(parseFloat(valor) || 0)
         return { ...g, monto: String(usd), bsOrig: usd > 0 ? Math.round(usd * data.tasa) : null }
@@ -1270,59 +1277,111 @@ export default function App() {
     }))
   }
 
-  if (pantalla === 'confirmarVoz') return (
+  function deletePendGasto(idx) {
+    const g = pendGastos[idx]
+    setConfirm({
+      title: 'Borrar este gasto?',
+      body: <p style={{fontSize:15,color:T.sub,textAlign:'center',lineHeight:1.6}}>
+        Quieres quitar <strong style={{color:T.brand}}>{g.concepto}</strong> por <strong style={{color:T.rose}}>{fUSD(g.monto)}</strong>?
+      </p>,
+      yesLabel: 'Si, borrarlo',
+      noLabel: 'No, dejarlo',
+      yesColor: T.rose,
+      onYes: () => {
+        setPendGastos(prev => prev.filter((_, j) => j !== idx))
+        setConfirm(null)
+        setEditingIdx(null)
+        showToast('Gasto eliminado de la lista')
+      },
+    })
+  }
+
+  if (pantalla === 'confirmarVoz') {
+    // Si se borraron todos
+    if (pendGastos.length === 0) { go('nuevoGasto'); return null }
+
+    return (
     <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 100px',overflowY:'auto'}}>
-      <InnerHeader title="Confirmar gastos" onBack={()=>{setPendGastos([]);go('nuevoGasto')}}/>
-      <p style={{fontSize:14,color:T.sub,marginBottom:6}}>Revisa y ajusta si algo no esta bien</p>
-      <p style={{fontSize:12,color:T.muted,marginBottom:22}}>Toca un monto para editarlo</p>
+      <InnerHeader title="Confirmar gastos" onBack={()=>{setPendGastos([]);setEditingIdx(null);go('nuevoGasto')}}/>
+      <p style={{fontSize:14,color:T.sub,marginBottom:22}}>Revisa cada gasto antes de guardar</p>
 
       <div style={{display:'flex',flexDirection:'column',gap:12,marginBottom:28}}>
-        {pendGastos.map((g, i) => (
-          <Card key={i} style={{padding:'18px 20px'}}>
-            {/* Concepto */}
-            <p style={{fontSize:16,fontWeight:800,color:T.navy,marginBottom:14}}>{g.concepto}</p>
+        {pendGastos.map((g, i) => {
+          const isEditing = editingIdx === i
+          return (
+          <Card key={i} style={{padding:'18px 20px',border:isEditing?`2px solid ${T.brandGold}`:`1px solid ${T.border}`,transition:'border .2s'}}>
 
-            {/* Dual currency inputs */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-              {/* USD */}
-              <div>
-                <p style={{fontSize:10,fontWeight:700,color:T.cobalt,letterSpacing:'.06em',marginBottom:6}}>DOLARES</p>
-                <div style={{position:'relative'}}>
-                  <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',fontSize:15,fontWeight:700,color:T.cobalt}}>$</span>
-                  <input type="number" inputMode="decimal"
-                    value={g.monto}
-                    onChange={e => editPendMonto(i, 'usd', e.target.value)}
-                    style={{width:'100%',paddingLeft:30,paddingRight:10,height:46,fontSize:18,fontWeight:800,border:`1.5px solid ${T.cobalt}`,borderRadius:12,background:T.cobaltLight,color:T.navy,outline:'none'}}
-                  />
-                </div>
-              </div>
+            {/* Header: concepto + acciones */}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:isEditing?14:0}}>
+              {isEditing ? (
+                <input type="text" value={g.concepto}
+                  onChange={e => editPendField(i, 'concepto', e.target.value)}
+                  onBlur={() => editPendField(i, 'concepto', formatConcept(g.concepto))}
+                  style={{flex:1,fontSize:16,fontWeight:700,color:T.brand,border:`1.5px solid ${T.brandGold}`,borderRadius:10,padding:'8px 12px',outline:'none',background:'#FFF9F0',marginRight:10}}
+                />
+              ) : (
+                <p style={{fontSize:16,fontWeight:800,color:T.brand,flex:1}}>{g.concepto}</p>
+              )}
 
-              {/* BS */}
-              <div>
-                <p style={{fontSize:10,fontWeight:700,color:T.amber,letterSpacing:'.06em',marginBottom:6}}>BOLIVARES</p>
-                <div style={{position:'relative'}}>
-                  <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:14,fontWeight:700,color:T.amber}}>Bs</span>
-                  <input type="number" inputMode="decimal"
-                    value={g.bsOrig != null && g.bsOrig > 0 ? g.bsOrig : ''}
-                    placeholder={String(Math.round(n(g.monto) * data.tasa))}
-                    onChange={e => editPendMonto(i, 'bs', e.target.value)}
-                    style={{width:'100%',paddingLeft:34,paddingRight:10,height:46,fontSize:18,fontWeight:800,border:`1.5px solid ${T.amber}44`,borderRadius:12,background:T.amberLight,color:T.navy,outline:'none'}}
-                  />
-                </div>
+              <div style={{display:'flex',gap:6,flexShrink:0,marginTop:2}}>
+                <button onClick={()=>setEditingIdx(isEditing?null:i)} style={{width:32,height:32,borderRadius:9,border:`1px solid ${T.border}`,background:isEditing?T.brandGold+'20':T.surface,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
+                  <Edit3 size={14} color={isEditing?T.brandGold:T.muted} strokeWidth={1.75}/>
+                </button>
+                <button onClick={()=>deletePendGasto(i)} style={{width:32,height:32,borderRadius:9,border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
+                  <Trash2 size={14} color={T.rose} strokeWidth={1.75}/>
+                </button>
               </div>
             </div>
+
+            {/* Montos */}
+            {isEditing ? (
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <div>
+                  <p style={{fontSize:10,fontWeight:700,color:T.cobalt,letterSpacing:'.06em',marginBottom:6}}>DOLARES</p>
+                  <div style={{position:'relative'}}>
+                    <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',fontSize:15,fontWeight:700,color:T.cobalt}}>$</span>
+                    <input type="number" inputMode="decimal" value={g.monto}
+                      onChange={e => editPendField(i, 'usd', e.target.value)}
+                      style={{width:'100%',paddingLeft:30,paddingRight:10,height:46,fontSize:18,fontWeight:800,border:`1.5px solid ${T.brandGold}`,borderRadius:12,background:T.cobaltLight,color:T.navy,outline:'none'}}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <p style={{fontSize:10,fontWeight:700,color:T.amber,letterSpacing:'.06em',marginBottom:6}}>BOLIVARES</p>
+                  <div style={{position:'relative'}}>
+                    <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:14,fontWeight:700,color:T.amber}}>Bs</span>
+                    <input type="number" inputMode="decimal"
+                      value={g.bsOrig != null && g.bsOrig > 0 ? g.bsOrig : ''}
+                      placeholder={String(Math.round(n(g.monto) * data.tasa))}
+                      onChange={e => editPendField(i, 'bs', e.target.value)}
+                      style={{width:'100%',paddingLeft:34,paddingRight:10,height:46,fontSize:18,fontWeight:800,border:`1.5px solid ${T.brandGold}`,borderRadius:12,background:T.amberLight,color:T.navy,outline:'none'}}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:6}}>
+                <span style={{fontSize:22,fontWeight:900,color:T.cobalt}}>{fUSD(g.monto)}</span>
+                {g.bsOrig != null && g.bsOrig > 0 && (
+                  <span style={{fontSize:13,color:T.muted,fontWeight:600}}>{fBS(g.bsOrig)}</span>
+                )}
+              </div>
+            )}
           </Card>
-        ))}
+          )
+        })}
       </div>
 
-      <Btn onClick={commitPendGastos} bg={T.forest} full icon={CheckCircle} style={{padding:'18px',fontSize:16,marginBottom:10}}>
+      <Btn onClick={()=>{setEditingIdx(null);commitPendGastos()}} bg={T.forest} full icon={CheckCircle} style={{padding:'18px',fontSize:16,marginBottom:10}}>
         Guardar todo
       </Btn>
-      <Btn onClick={()=>{setPendGastos([]);go('nuevoGasto')}} bg={T.border} color={T.navy} full icon={X} style={{padding:'14px',fontSize:13,boxShadow:'none'}}>
+      <Btn onClick={()=>{setPendGastos([]);setEditingIdx(null);go('nuevoGasto')}} bg={T.border} color={T.navy} full icon={X} style={{padding:'14px',fontSize:13,boxShadow:'none'}}>
         Descartar
       </Btn>
+      <Confirm title={confirm?.title} msg={confirm?.msg} onYes={confirm?.onYes} onNo={()=>setConfirm(null)} yesLabel={confirm?.yesLabel} noLabel={confirm?.noLabel} yesColor={confirm?.yesColor}>{confirm?.body}</Confirm>
     </div>
-  )
+    )
+  }
 
   // ══════════════════════════════════════════════════════════
   // INGRESOS (pantalla interior, no en nav)
