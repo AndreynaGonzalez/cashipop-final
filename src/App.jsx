@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { supabase, fetchGastos, fetchIngresos, insertGasto, deleteGasto, deleteIngresosByFecha, deleteGastosByFecha, insertIngreso, signIn, signUp, signOut, onAuthChange, getSession } from './supabase'
+import { supabase, fetchGastos, fetchIngresos, fetchGastosTrash, fetchIngresosTrash, insertGasto, softDeleteGasto, restoreGasto, deleteGasto, deleteIngresosByFecha, softDeleteIngresosByFecha, deleteGastosByFecha, softDeleteGastosByFecha, insertIngreso, restoreIngreso, signIn, signUp, signOut, onAuthChange, getSession, autoPurge } from './supabase'
 import {
   Home, Receipt, BarChart3, CalendarDays, PieChart as PieIcon,
   DollarSign, Landmark, Smartphone, Banknote, Bike, Zap,
   TrendingUp, TrendingDown, CheckCircle, AlertCircle,
   Camera, Mic, MicOff, Lock, Plus, Trash2, ArrowLeft,
   RefreshCw, ChevronRight, Edit3, CreditCard, Package,
-  X, Lightbulb, Calendar,
+  X, Lightbulb, Calendar, RotateCcw, Trash,
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 
@@ -694,6 +694,9 @@ export default function App() {
   const [dbGastos,   setDbGastos]   = useState([])
   const [dbIngresos, setDbIngresos] = useState([])
   const [dbLoaded,   setDbLoaded]   = useState(false)
+  const [trashGastos, setTrashGastos] = useState([])
+  const [trashIngresos, setTrashIngresos] = useState([])
+  const [showTrash,  setShowTrash]  = useState(false)
 
   const fileRef        = useRef(null)
   const gastoFileRef   = useRef(null)
@@ -716,13 +719,15 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // ── Cargar datos de Supabase (global, sin filtro de usuario) ──────────────────
+  // ── Cargar datos de Supabase + auto-purge ────────────────────────────────────
   useEffect(() => {
     if (!supabase) { setDbLoaded(true); return }
-    Promise.all([fetchGastos(), fetchIngresos()]).then(([g, i]) => {
-      setDbGastos(g); setDbIngresos(i); setDbLoaded(true)
-      console.log(`Supabase: ${g.length} gastos, ${i.length} ingresos`)
-    })
+    autoPurge().then(() =>
+      Promise.all([fetchGastos(), fetchIngresos()]).then(([g, i]) => {
+        setDbGastos(g); setDbIngresos(i); setDbLoaded(true)
+        console.log(`Supabase: ${g.length} gastos, ${i.length} ingresos`)
+      })
+    )
   }, [])
 
   // ── Init (tasa instantanea desde cache, sin esperar BCV) ────────────────────
@@ -869,12 +874,12 @@ export default function App() {
       onYes: () => {
         const nueva = { ...data, gastos: data.gastos.filter(x => x.id !== g.id) }
         setData(nueva); guardarData(nueva)
-        // Sync delete to Supabase (if it has a numeric DB id)
+        // Soft delete in Supabase (moves to trash)
         if (typeof g.id === 'number' && g.id > 0 && g.id < 1e12) {
-          deleteGasto(g.id).then(() => setDbGastos(prev => prev.filter(x => x.id !== g.id)))
+          softDeleteGasto(g.id).then(() => setDbGastos(prev => prev.filter(x => x.id !== g.id)))
         }
         setConfirm(null)
-        showToast('Gasto eliminado')
+        showToast('Gasto enviado a la papelera (15 dias para restaurar)')
       },
     })
   }
@@ -975,20 +980,19 @@ export default function App() {
     setConfirm({
       title: 'Borrar cierre?',
       body: <p style={{fontSize:15,color:T.sub,textAlign:'center',lineHeight:1.6}}>
-        Estas segura de borrar el cierre del <strong style={{color:T.navy}}>{fDate(fecha)}</strong>? Se eliminaran todos los ingresos y gastos de ese dia.
+        Estas segura de borrar el cierre del <strong style={{color:T.navy}}>{fDate(fecha)}</strong>? Los ingresos iran a la papelera por 15 dias. Los gastos NO se tocan.
       </p>,
-      yesLabel: 'Si, borrar todo',
+      yesLabel: 'Si, a la papelera',
       noLabel: 'No, dejarlo',
       yesColor: T.rose,
       onYes: async () => {
         if (supabase) {
-          await deleteIngresosByFecha(fecha)
-          await deleteGastosByFecha(fecha)
+          await softDeleteIngresosByFecha(fecha)
           const [g, i] = await Promise.all([fetchGastos(), fetchIngresos()])
           setDbGastos(g); setDbIngresos(i)
         }
         setConfirm(null); setHistItem(null)
-        showToast('Cierre eliminado')
+        showToast('Cierre enviado a la papelera (15 dias)')
       },
     })
   }
@@ -2690,13 +2694,65 @@ export default function App() {
       )
     }
 
+    // ── Papelera ──
+    if (showTrash) {
+      const allTrash = [...trashGastos.map(g=>({...g,_tipo:'gasto'})), ...trashIngresos.map(i=>({...i,_tipo:'ingreso'}))].sort((a,b)=>(b.deleted_at||'').localeCompare(a.deleted_at||''))
+
+      async function handleRestore(item) {
+        if (item._tipo === 'gasto') { await restoreGasto(item.id); setDbGastos(await fetchGastos()); setTrashGastos(await fetchGastosTrash()) }
+        else { await restoreIngreso(item.id); setDbIngresos(await fetchIngresos()); setTrashIngresos(await fetchIngresosTrash()) }
+        showToast('Registro restaurado')
+      }
+
+      return (
+        <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 96px',overflowY:'auto'}}>
+          <InnerHeader title="Papelera" onBack={()=>setShowTrash(false)}/>
+          <p style={{fontSize:13,color:T.sub,marginBottom:20}}>Los registros se eliminan definitivamente despues de 15 dias</p>
+
+          {allTrash.length === 0 ? (
+            <Card style={{textAlign:'center',padding:48,borderRadius:28}}>
+              <Trash size={30} color={T.muted} strokeWidth={1.5} style={{margin:'0 auto'}}/>
+              <p style={{fontSize:15,fontWeight:700,color:T.navy,marginTop:14}}>Papelera vacia</p>
+            </Card>
+          ) : allTrash.map(item => {
+            const deletedDate = new Date(item.deleted_at)
+            const purgeDate = new Date(deletedDate.getTime() + 15 * 24 * 60 * 60 * 1000)
+            const diasRestantes = Math.max(0, Math.ceil((purgeDate - Date.now()) / (24*60*60*1000)))
+            return (
+              <Card key={`${item._tipo}-${item.id}`} style={{marginBottom:10,padding:'14px 18px'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+                      <span style={{fontSize:10,fontWeight:700,color:item._tipo==='gasto'?T.rose:T.forest,background:item._tipo==='gasto'?T.roseLight:T.forestLight,padding:'2px 8px',borderRadius:6}}>{item._tipo==='gasto'?'GASTO':'INGRESO'}</span>
+                      <span style={{fontSize:11,color:T.muted}}>{fDate(item.fecha)}</span>
+                    </div>
+                    <p style={{fontSize:14,fontWeight:700,color:T.navy,marginBottom:2}}>{item.concepto}</p>
+                    <p style={{fontSize:12,color:T.muted}}>{fUSD(toUSD(item.monto, item.moneda, data.tasa))} · Se elimina en {diasRestantes} dia{diasRestantes!==1?'s':''}</p>
+                  </div>
+                  <button onClick={()=>handleRestore(item)} style={{width:38,height:38,borderRadius:10,border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,WebkitTapHighlightColor:'transparent'}}>
+                    <RotateCcw size={16} color={T.forest} strokeWidth={1.75}/>
+                  </button>
+                </div>
+              </Card>
+            )
+          })}
+          <BottomNav pantalla={pantalla} go={go}/>
+        </div>
+      )
+    }
+
     // Lista de dias
     const hayDatos = fechas.length > 0 || historial.length > 0
     return (
       <div style={{minHeight:'100svh',background:T.bg,padding:'52px 20px 96px',overflowY:'auto'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
           <h2 style={{fontSize:22,fontWeight:800,color:T.navy,letterSpacing:'-.025em'}}>Historial</h2>
-          {dbLoaded && <p style={{fontSize:12,color:T.muted}}>{dbGastos.length}G · {dbIngresos.length}I</p>}
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <button onClick={async ()=>{setTrashGastos(await fetchGastosTrash());setTrashIngresos(await fetchIngresosTrash());setShowTrash(true)}} style={{width:34,height:34,borderRadius:10,border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
+              <Trash size={15} color={T.muted} strokeWidth={1.75}/>
+            </button>
+            {dbLoaded && <span style={{fontSize:12,color:T.muted}}>{dbGastos.length}G · {dbIngresos.length}I</span>}
+          </div>
         </div>
 
         {!hayDatos ? (

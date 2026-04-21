@@ -44,9 +44,21 @@ export async function fetchGastos() {
   const { data, error } = await supabase
     .from('gastos')
     .select('*')
+    .is('deleted_at', null)
     .order('fecha', { ascending: false })
     .order('created_at', { ascending: false })
   if (error) { console.error('fetchGastos:', error); return [] }
+  return data
+}
+
+export async function fetchGastosTrash() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('gastos')
+    .select('*')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false })
+  if (error) { console.error('fetchGastosTrash:', error); return [] }
   return data
 }
 
@@ -65,6 +77,21 @@ export async function insertGasto(gasto) {
   return data?.[0] || null
 }
 
+// Soft delete: set deleted_at
+export async function softDeleteGasto(id) {
+  if (!supabase) return
+  const { error } = await supabase.from('gastos').update({ deleted_at: new Date().toISOString() }).eq('id', id)
+  if (error) console.error('softDeleteGasto:', error)
+}
+
+// Restore from trash
+export async function restoreGasto(id) {
+  if (!supabase) return
+  const { error } = await supabase.from('gastos').update({ deleted_at: null }).eq('id', id)
+  if (error) console.error('restoreGasto:', error)
+}
+
+// Hard delete (for auto-purge after 15 days)
 export async function deleteGasto(id) {
   if (!supabase) return
   const { error } = await supabase.from('gastos').delete().eq('id', id)
@@ -78,22 +105,55 @@ export async function fetchIngresos() {
   const { data, error } = await supabase
     .from('ingresos')
     .select('*')
+    .is('deleted_at', null)
     .order('fecha', { ascending: false })
     .order('created_at', { ascending: false })
   if (error) { console.error('fetchIngresos:', error); return [] }
   return data
 }
 
+export async function fetchIngresosTrash() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('ingresos')
+    .select('*')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false })
+  if (error) { console.error('fetchIngresosTrash:', error); return [] }
+  return data
+}
+
+// Soft delete ingresos by fecha (for cierre upsert — marks old ones as deleted)
+export async function softDeleteIngresosByFecha(fecha) {
+  if (!supabase) return
+  const { error } = await supabase.from('ingresos').update({ deleted_at: new Date().toISOString() }).eq('fecha', fecha).is('deleted_at', null)
+  if (error) console.error('softDeleteIngresosByFecha:', error)
+}
+
+// Hard delete ingresos by fecha (for upsert — the old ones were already soft-deleted)
 export async function deleteIngresosByFecha(fecha) {
   if (!supabase) return
-  const { error } = await supabase.from('ingresos').delete().eq('fecha', fecha)
+  const { error } = await supabase.from('ingresos').delete().eq('fecha', fecha).not('deleted_at', 'is', null)
   if (error) console.error('deleteIngresosByFecha:', error)
+}
+
+// Soft delete gastos by fecha
+export async function softDeleteGastosByFecha(fecha) {
+  if (!supabase) return
+  const { error } = await supabase.from('gastos').update({ deleted_at: new Date().toISOString() }).eq('fecha', fecha).is('deleted_at', null)
+  if (error) console.error('softDeleteGastosByFecha:', error)
 }
 
 export async function deleteGastosByFecha(fecha) {
   if (!supabase) return
-  const { error } = await supabase.from('gastos').delete().eq('fecha', fecha)
+  const { error } = await supabase.from('gastos').delete().eq('fecha', fecha).not('deleted_at', 'is', null)
   if (error) console.error('deleteGastosByFecha:', error)
+}
+
+export async function restoreIngreso(id) {
+  if (!supabase) return
+  const { error } = await supabase.from('ingresos').update({ deleted_at: null }).eq('id', id)
+  if (error) console.error('restoreIngreso:', error)
 }
 
 export async function insertIngreso(ingreso) {
@@ -109,4 +169,14 @@ export async function insertIngreso(ingreso) {
   const { data, error } = await supabase.from('ingresos').insert(row).select()
   if (error) console.error('insertIngreso:', error)
   return data?.[0] || null
+}
+
+// ── Auto-purge: delete records with deleted_at > 15 days ago ────────────────
+
+export async function autoPurge() {
+  if (!supabase) return
+  const cutoff = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
+  await supabase.from('gastos').delete().lt('deleted_at', cutoff)
+  await supabase.from('ingresos').delete().lt('deleted_at', cutoff)
+  console.log('Auto-purge: cleaned records deleted before', cutoff.slice(0, 10))
 }
