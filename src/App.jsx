@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 
-// ─── Tokens de diseño — Andino Pop Brand ──────────────────────────────────────
+// ─── Tokens de diseño — Cashipop Brand ──────────────────────────────────────
 const T = {
   bg:          '#FFF1DC',    // fondo cálido oficial
   surface:     '#FFFFFF',
@@ -68,7 +68,7 @@ function cargarHistorial() {
 }
 
 const FRASES_PODER = [
-  'Andino Pop brilla hoy gracias a ti, Arcelia.',
+  'Cashipop brilla hoy gracias a ti, Arcelia.',
   'Tu esfuerzo construye el futuro.',
   'Eres la jefa de tu destino, preparando tus numeros...',
   'Cada dia es una oportunidad para crecer.',
@@ -109,9 +109,10 @@ async function fetchTasaBCV() {
 }
 
 // ─── OCR con Gemini via OpenRouter ────────────────────────────────────────────
-const OCR_SYSTEM = `Eres un lector de libretas de cierre de caja para un restaurante venezolano llamado Andino Pop.
-Extrae los valores de la foto. Responde SOLO JSON válido, sin markdown:
+const OCR_SYSTEM = `Eres un lector de libretas de cierre de caja para Cashipop.
+Extrae los valores de la foto. Responde SOLO JSON valido, sin markdown:
 {
+  "fecha": "",
   "tasa": 0,
   "bicentenario": 0, "bancaribe": 0, "banesco": 0, "bancamiga": 0,
   "pagos_dia": 0, "efectivo_bs": 0, "delivery": 0,
@@ -120,10 +121,11 @@ Extrae los valores de la foto. Responde SOLO JSON válido, sin markdown:
   "cierre_total": 0
 }
 Reglas:
+- "fecha" es la fecha escrita en el cuaderno en formato YYYY-MM-DD. Si no se ve, deja "".
+- "tasa" es la tasa del dolar BCV anotada (ej: 479,77 → 479.77).
 - Los montos en Bs van tal cual. Los montos en $ van en los campos _usd.
-- "tasa" es la tasa del dólar BCV anotada (ej: 479,77 → 479.77).
-- "cierre_total" es el total general en USD que ella anotó.
-- Si un campo no aparece, déjalo en 0.
+- "cierre_total" es el total general en USD que ella anoto.
+- Si un campo no aparece, dejalo en 0.
 - Usa punto decimal, no coma.`
 
 async function procesarFotoConIA(file) {
@@ -172,11 +174,18 @@ async function procesarFotoConIA(file) {
 }
 
 // ─── Helpers de texto y números ───────────────────────────────────────────────
+const FILLER_WORDS = /^(pago|gasto|compra|compras|gastos|pagos|de|del|para|por|en|el|la|los|las|un|una)$/i
 function formatConcept(str) {
   if (!str) return ''
-  return str.trim().split(/\s+/).map(w =>
+  // Capitalize each word
+  let words = str.trim().split(/\s+/).map(w =>
     w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-  ).join(' ')
+  )
+  // Remove filler words at the start
+  while (words.length > 1 && FILLER_WORDS.test(words[0])) words.shift()
+  // Deduplicate consecutive repeated words ("Cafe Cafe" → "Cafe")
+  words = words.filter((w, i) => i === 0 || w.toLowerCase() !== words[i - 1].toLowerCase())
+  return words.join(' ') || 'Varios'
 }
 const capitalizar = formatConcept
 
@@ -360,9 +369,9 @@ function parsearVozMultiple(texto, tasa) {
 
 // ─── OpenRouter IA ────────────────────────────────────────────────────────────
 const OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_KEY || ''
-const SYSTEM_PROMPT = 'Contador Andino Pop. Tasa: 481.21. ESTO ES UN GASTO/EGRESO, nunca un ingreso. Si dice Bs, divide entre tasa y redondea a 2 decimales. Si dice $, mantiene. Numeros redondos se quedan redondos. Capitaliza cada palabra del concepto. Si el monto original era en Bs, incluyelo en "bs". Responde solo JSON: [{"c":"Concepto","m":0.00,"bs":0}] donde "bs" es el monto original en bolivares (0 si era en dolares).'
+const SYSTEM_PROMPT = 'Contador Cashipop. Tasa: 481.21. ESTO ES UN GASTO/EGRESO, nunca un ingreso. Si dice Bs, divide entre tasa y redondea a 2 decimales. Si dice $, mantiene. Numeros redondos se quedan redondos. Capitaliza cada palabra del concepto. Si el monto original era en Bs, incluyelo en "bs". Responde solo JSON: [{"c":"Concepto","m":0.00,"bs":0}] donde "bs" es el monto original en bolivares (0 si era en dolares).'
 
-const FACTURA_SYSTEM = `Eres un extractor de gastos/egresos para el restaurante Andino Pop.
+const FACTURA_SYSTEM = `Eres un extractor de gastos/egresos para el restaurante Cashipop.
 La foto es una FACTURA DE PROVEEDOR o TICKET DE COMPRA. Esto es siempre un GASTO, nunca un ingreso.
 Extrae cada item o el total. Tasa: 481.21. Si el monto esta en Bs, divide entre la tasa.
 Capitaliza cada palabra. Responde SOLO JSON:
@@ -686,11 +695,13 @@ export default function App() {
   const [dbIngresos, setDbIngresos] = useState([])
   const [dbLoaded,   setDbLoaded]   = useState(false)
 
-  const fileRef       = useRef(null)
-  const gastoFileRef  = useRef(null)
-  const homeFileRef   = useRef(null)
-  const cierreFileRef = useRef(null)
-  const srRef         = useRef(null)
+  const fileRef        = useRef(null)
+  const gastoFileRef   = useRef(null)
+  const gastoGalRef    = useRef(null)
+  const homeFileRef    = useRef(null)
+  const cierreFileRef  = useRef(null)
+  const cierreGalRef   = useRef(null)
+  const srRef          = useRef(null)
   const SR      = window.SpeechRecognition || window.webkitSpeechRecognition
 
   const go        = useCallback(p => setPantalla(p), [])
@@ -1033,10 +1044,16 @@ export default function App() {
         if (resultado[k] && resultado[k] > 0) campos[k] = resultado[k]
       }
 
+      // Detectar fecha del cuaderno vs fecha seleccionada
+      const fechaOCR = resultado.fecha || ''
+      const fechaDiscrepancia = fechaOCR && fechaOCR !== fechaCierre
+
       setOcrRes({
         campos,
         tasa: resultado.tasa || 0,
         cierreTotal: resultado.cierre_total || 0,
+        fechaDetectada: fechaOCR,
+        fechaDiscrepancia,
       })
       go('validarOCR')
     } catch (err) {
@@ -1325,7 +1342,7 @@ export default function App() {
     msg+=`*Total: ${fUSD(tu)}*\n`
     if(+ing.cuentas_cobrar)msg+=`_(Por cobrar: ${fUSD(ing.cuentas_cobrar)})_\n`
     if(d.gastos.length){msg+=`\n*GASTOS*\n`;d.gastos.forEach(g=>{msg+=`  ${g.concepto}: ${g.moneda==='USD'?fUSD(g.monto):fBS(g.monto)}\n`});msg+=`*Total gastos: ${fUSD(tg)}*\n`}
-    msg+=`\n✅ *NETO: ${fUSD(net)}* (${fBS(net*t)})\n_Cashipop · Andino Pop_`
+    msg+=`\n✅ *NETO: ${fUSD(net)}* (${fBS(net*t)})\n_Cashipop · Cashipop_`
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`,'_blank')
   }
 
@@ -1407,7 +1424,7 @@ export default function App() {
         <div style={{width:64,height:64,borderRadius:20,background:'linear-gradient(145deg,#3D2539,#5E405B)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px',boxShadow:'0 8px 32px rgba(94,64,91,0.2)'}}>
           <DollarSign size={28} color={T.brandGold} strokeWidth={1.75}/>
         </div>
-        <h1 style={{fontSize:26,fontWeight:900,color:T.navy,letterSpacing:'-.03em'}}>Andino Pop</h1>
+        <h1 style={{fontSize:26,fontWeight:900,color:T.navy,letterSpacing:'-.03em'}}>Cashipop</h1>
         <p style={{fontSize:14,color:T.sub,marginTop:6}}>Tu sistema de control financiero</p>
       </div>
 
@@ -1508,7 +1525,7 @@ export default function App() {
   // VALIDAR OCR
   // ══════════════════════════════════════════════════════════
   if (pantalla === 'validarOCR' && ocrRes) {
-    const { campos, tasa: tasaDetectada, cierreTotal } = ocrRes
+    const { campos, tasa: tasaDetectada, cierreTotal, fechaDetectada, fechaDiscrepancia } = ocrRes
     const tieneData = Object.keys(campos).length > 0
     const labels = {
       bicentenario:'Bicentenario', bancaribe:'Bancaribe', banesco:'Banesco',
@@ -1530,7 +1547,18 @@ export default function App() {
     return (
       <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 100px',overflowY:'auto'}}>
         <InnerHeader title="Validar cierre" onBack={()=>{setOcrRes(null);go('ingresos')}}/>
-        <p style={{fontSize:14,color:T.sub,marginBottom:22}}>Revisa los valores que detecte en la libreta</p>
+        <p style={{fontSize:14,color:T.sub,marginBottom:16}}>Revisa los valores que detecte en la libreta</p>
+
+        {/* Alerta de fecha diferente */}
+        {fechaDiscrepancia && (
+          <Card style={{marginBottom:12,background:'#FFF0EB',border:`1px solid ${T.rose}22`,padding:'16px 18px'}}>
+            <p style={{fontSize:13,fontWeight:700,color:T.rose,marginBottom:6}}>La fecha del cuaderno no coincide</p>
+            <p style={{fontSize:12,color:T.sub,lineHeight:1.5}}>Cuaderno: <strong style={{color:T.navy}}>{fDate(fechaDetectada)}</strong> · Seleccionada: <strong style={{color:T.navy}}>{fDate(fechaCierre)}</strong></p>
+            <Btn onClick={()=>{setFechaCierre(fechaDetectada);setOcrRes({...ocrRes,fechaDiscrepancia:false});showToast(`Fecha cambiada a ${fDate(fechaDetectada)}`)}} bg={T.rose} style={{marginTop:10,padding:'10px 14px',fontSize:12}} icon={Calendar}>
+              Usar fecha del cuaderno
+            </Btn>
+          </Card>
+        )}
 
         {/* Tasa detectada */}
         {tasaDetectada > 0 && (
@@ -1868,15 +1896,19 @@ export default function App() {
             <p style={{fontSize:13,color:T.sub,marginBottom:14,lineHeight:1.5}}>
               Dicta o escanea y la IA extrae los gastos
             </p>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-              <Btn onClick={()=>iniciarVoz('g:multiple')} bg={T.cobalt} full icon={Mic} style={{fontSize:13,padding:'15px'}}>
-                Dictar por voz
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+              <Btn onClick={()=>iniciarVoz('g:multiple')} bg={T.cobalt} full icon={Mic} style={{fontSize:11,padding:'14px 8px'}}>
+                Dictar
               </Btn>
-              <Btn onClick={()=>gastoFileRef.current?.click()} bg={T.navy} full icon={Camera} style={{fontSize:13,padding:'15px'}}>
-                Escanear foto
+              <Btn onClick={()=>gastoFileRef.current?.click()} bg={T.navy} full icon={Camera} style={{fontSize:11,padding:'14px 8px'}}>
+                Camara
+              </Btn>
+              <Btn onClick={()=>gastoGalRef.current?.click()} bg={T.sub} full icon={Package} style={{fontSize:11,padding:'14px 8px'}}>
+                Galeria
               </Btn>
             </div>
             <input ref={gastoFileRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{if(e.target.files[0])escanearFactura(e.target.files[0]);e.target.value=''}}/>
+            <input ref={gastoGalRef} type="file" accept="image/*" style={{display:'none'}} onChange={e=>{if(e.target.files[0])escanearFactura(e.target.files[0]);e.target.value=''}}/>
           </>
         )}
 
@@ -1942,7 +1974,7 @@ export default function App() {
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:28}}>
         <div>
           <p style={{fontSize:12,color:T.muted,fontWeight:600,letterSpacing:'.04em'}}>{fDate(data.fecha).toUpperCase()}</p>
-          <h1 style={{fontSize:25,fontWeight:900,color:T.navy,letterSpacing:'-.03em',lineHeight:1.15,marginTop:3}}>Andino Pop</h1>
+          <h1 style={{fontSize:25,fontWeight:900,color:T.navy,letterSpacing:'-.03em',lineHeight:1.15,marginTop:3}}>Cashipop</h1>
         </div>
         {/* Acciones terciarias: WA + Tasa */}
         <div style={{display:'flex',alignItems:'center',gap:8,marginTop:2}}>
@@ -1990,12 +2022,12 @@ export default function App() {
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
         <Card style={{background:T.forestLight,border:`1px solid ${T.forest}22`,padding:'18px'}}>
           <TrendingUp size={16} color={T.forest} strokeWidth={1.75}/>
-          <p style={{fontSize:10,fontWeight:700,color:T.forest,marginTop:8,letterSpacing:'.06em'}}>INGRESOS</p>
+          <p style={{fontSize:10,fontWeight:700,color:T.forest,marginTop:8,letterSpacing:'.06em'}}>INGRESOS DE HOY</p>
           <p style={{fontSize:19,fontWeight:900,color:T.navy,marginTop:3,letterSpacing:'-.02em'}}>{fUSD(tUSD)}</p>
         </Card>
         <Card style={{background:T.roseLight,border:`1px solid ${T.rose}22`,padding:'18px'}}>
           <TrendingDown size={16} color={T.rose} strokeWidth={1.75}/>
-          <p style={{fontSize:10,fontWeight:700,color:T.rose,marginTop:8,letterSpacing:'.06em'}}>GASTOS</p>
+          <p style={{fontSize:10,fontWeight:700,color:T.rose,marginTop:8,letterSpacing:'.06em'}}>GASTOS DE HOY</p>
           <p style={{fontSize:19,fontWeight:900,color:T.navy,marginTop:3,letterSpacing:'-.02em'}}>{fUSD(tGas)}</p>
         </Card>
       </div>
@@ -2175,34 +2207,21 @@ export default function App() {
 
         {/* Entrada dual: Foto o Manual (solo si no hay cierre y es editable) */}
         {!tieneCierreDB && !tieneIngresosLocal && (
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
-            <button onClick={()=>cierreFileRef.current?.click()} style={{
-              background:T.brandGold,color:T.brand,border:'none',borderRadius:20,padding:'20px 12px',
-              cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:10,
-              boxShadow:'0 5px 0 #E5A040',WebkitTapHighlightColor:'transparent',
-              transition:'transform .08s,box-shadow .08s',
-            }}
-              onPointerDown={e=>{e.currentTarget.style.transform='translateY(3px)';e.currentTarget.style.boxShadow='0 2px 0 #E5A040'}}
-              onPointerUp={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 #E5A040'}}
-              onPointerLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 #E5A040'}}
-            >
-              <Camera size={24} color={T.brand} strokeWidth={1.75}/>
-              <span style={{fontSize:14,fontWeight:800}}>Tomar foto</span>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:20}}>
+            <button onClick={()=>cierreFileRef.current?.click()} style={{background:T.brandGold,color:T.brand,border:'none',borderRadius:18,padding:'16px 8px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:8,boxShadow:'0 4px 0 #E5A040',WebkitTapHighlightColor:'transparent'}}>
+              <Camera size={22} color={T.brand} strokeWidth={1.75}/>
+              <span style={{fontSize:12,fontWeight:800}}>Camara</span>
             </button>
-            <button onClick={()=>go('ingresos')} style={{
-              background:T.brand,color:'#fff',border:'none',borderRadius:20,padding:'20px 12px',
-              cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:10,
-              boxShadow:'0 5px 0 #3D2539',WebkitTapHighlightColor:'transparent',
-              transition:'transform .08s,box-shadow .08s',
-            }}
-              onPointerDown={e=>{e.currentTarget.style.transform='translateY(3px)';e.currentTarget.style.boxShadow='0 2px 0 #3D2539'}}
-              onPointerUp={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 #3D2539'}}
-              onPointerLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 5px 0 #3D2539'}}
-            >
-              <Edit3 size={24} color='#fff' strokeWidth={1.75}/>
-              <span style={{fontSize:14,fontWeight:800}}>Cargar manual</span>
+            <button onClick={()=>cierreGalRef.current?.click()} style={{background:T.sub,color:'#fff',border:'none',borderRadius:18,padding:'16px 8px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:8,boxShadow:'0 4px 0 #5A6070',WebkitTapHighlightColor:'transparent'}}>
+              <Package size={22} color='#fff' strokeWidth={1.75}/>
+              <span style={{fontSize:12,fontWeight:800}}>Galeria</span>
+            </button>
+            <button onClick={()=>go('ingresos')} style={{background:T.brand,color:'#fff',border:'none',borderRadius:18,padding:'16px 8px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:8,boxShadow:'0 4px 0 #3D2539',WebkitTapHighlightColor:'transparent'}}>
+              <Edit3 size={22} color='#fff' strokeWidth={1.75}/>
+              <span style={{fontSize:12,fontWeight:800}}>Manual</span>
             </button>
             <input ref={cierreFileRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{if(e.target.files[0])procesarFoto(e.target.files[0]);e.target.value=''}}/>
+            <input ref={cierreGalRef} type="file" accept="image/*" style={{display:'none'}} onChange={e=>{if(e.target.files[0])procesarFoto(e.target.files[0]);e.target.value=''}}/>
           </div>
         )}
 
@@ -2602,12 +2621,15 @@ export default function App() {
           <InnerHeader title={fDate(hi.fecha)} onBack={()=>setHistItem(null)}/>
 
           {/* Acciones de edicion */}
-          <div style={{display:'flex',gap:8,marginBottom:18}}>
-            <Btn onClick={()=>editarCierreHistorico(hi.fecha, hi.ingresos)} bg={T.cobaltLight} color={T.brand} style={{flex:1,boxShadow:'none',padding:'12px',fontSize:13}} icon={Edit3}>
-              Editar cierre
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:18}}>
+            <Btn onClick={()=>editarCierreHistorico(hi.fecha, hi.ingresos)} bg={T.cobaltLight} color={T.brand} style={{boxShadow:'none',padding:'11px 6px',fontSize:11}} icon={Edit3}>
+              Editar
             </Btn>
-            <Btn onClick={()=>borrarCierreHistorico(hi.fecha)} bg={T.roseLight} color={T.rose} style={{flex:1,boxShadow:'none',padding:'12px',fontSize:13}} icon={Trash2}>
-              Borrar dia
+            <Btn onClick={()=>{setFechaCierre(hi.fecha);cierreFileRef.current?.click()}} bg={T.amberLight} color={T.amber} style={{boxShadow:'none',padding:'11px 6px',fontSize:11}} icon={Camera}>
+              Re-escanear
+            </Btn>
+            <Btn onClick={()=>borrarCierreHistorico(hi.fecha)} bg={T.roseLight} color={T.rose} style={{boxShadow:'none',padding:'11px 6px',fontSize:11}} icon={Trash2}>
+              Borrar
             </Btn>
           </div>
           <div style={{background:'linear-gradient(145deg,#3D2539,#5E405B)',borderRadius:28,padding:'24px',marginBottom:18,boxShadow:'0 12px 40px rgba(0,0,0,0.15)'}}>
