@@ -44,11 +44,11 @@ export async function fetchGastos() {
   const { data, error } = await supabase
     .from('gastos')
     .select('*')
-    .is('deleted_at', null)
     .order('fecha', { ascending: false })
     .order('created_at', { ascending: false })
   if (error) { console.error('fetchGastos:', error); return [] }
-  return data
+  // Filter soft-deleted in JS (safe if column doesn't exist yet)
+  return (data || []).filter(r => !r.deleted_at)
 }
 
 export async function fetchGastosTrash() {
@@ -56,10 +56,9 @@ export async function fetchGastosTrash() {
   const { data, error } = await supabase
     .from('gastos')
     .select('*')
-    .not('deleted_at', 'is', null)
-    .order('deleted_at', { ascending: false })
+    .order('fecha', { ascending: false })
   if (error) { console.error('fetchGastosTrash:', error); return [] }
-  return data
+  return (data || []).filter(r => r.deleted_at)
 }
 
 export async function insertGasto(gasto) {
@@ -77,14 +76,16 @@ export async function insertGasto(gasto) {
   return data?.[0] || null
 }
 
-// Soft delete: set deleted_at
+// Soft delete: set deleted_at (falls back to hard delete if column missing)
 export async function softDeleteGasto(id) {
   if (!supabase) return
   const { error } = await supabase.from('gastos').update({ deleted_at: new Date().toISOString() }).eq('id', id)
-  if (error) console.error('softDeleteGasto:', error)
+  if (error) {
+    console.warn('softDeleteGasto fallback to hard delete:', error.message)
+    await supabase.from('gastos').delete().eq('id', id)
+  }
 }
 
-// Restore from trash
 export async function restoreGasto(id) {
   if (!supabase) return
   const { error } = await supabase.from('gastos').update({ deleted_at: null }).eq('id', id)
@@ -105,11 +106,10 @@ export async function fetchIngresos() {
   const { data, error } = await supabase
     .from('ingresos')
     .select('*')
-    .is('deleted_at', null)
     .order('fecha', { ascending: false })
     .order('created_at', { ascending: false })
   if (error) { console.error('fetchIngresos:', error); return [] }
-  return data
+  return (data || []).filter(r => !r.deleted_at)
 }
 
 export async function fetchIngresosTrash() {
@@ -117,36 +117,41 @@ export async function fetchIngresosTrash() {
   const { data, error } = await supabase
     .from('ingresos')
     .select('*')
-    .not('deleted_at', 'is', null)
-    .order('deleted_at', { ascending: false })
+    .order('fecha', { ascending: false })
   if (error) { console.error('fetchIngresosTrash:', error); return [] }
-  return data
+  return (data || []).filter(r => r.deleted_at)
 }
 
-// Soft delete ingresos by fecha (for cierre upsert — marks old ones as deleted)
+// Soft delete ingresos by fecha (falls back to hard delete if column missing)
 export async function softDeleteIngresosByFecha(fecha) {
   if (!supabase) return
-  const { error } = await supabase.from('ingresos').update({ deleted_at: new Date().toISOString() }).eq('fecha', fecha).is('deleted_at', null)
-  if (error) console.error('softDeleteIngresosByFecha:', error)
+  const { error } = await supabase.from('ingresos').update({ deleted_at: new Date().toISOString() }).eq('fecha', fecha)
+  if (error) {
+    console.warn('softDeleteIngresosByFecha fallback:', error.message)
+    await supabase.from('ingresos').delete().eq('fecha', fecha)
+  }
 }
 
-// Hard delete ingresos by fecha (for upsert — the old ones were already soft-deleted)
+// Hard delete ingresos by fecha (for upsert before re-insert)
 export async function deleteIngresosByFecha(fecha) {
   if (!supabase) return
-  const { error } = await supabase.from('ingresos').delete().eq('fecha', fecha).not('deleted_at', 'is', null)
+  const { error } = await supabase.from('ingresos').delete().eq('fecha', fecha)
   if (error) console.error('deleteIngresosByFecha:', error)
 }
 
 // Soft delete gastos by fecha
 export async function softDeleteGastosByFecha(fecha) {
   if (!supabase) return
-  const { error } = await supabase.from('gastos').update({ deleted_at: new Date().toISOString() }).eq('fecha', fecha).is('deleted_at', null)
-  if (error) console.error('softDeleteGastosByFecha:', error)
+  const { error } = await supabase.from('gastos').update({ deleted_at: new Date().toISOString() }).eq('fecha', fecha)
+  if (error) {
+    console.warn('softDeleteGastosByFecha fallback:', error.message)
+    await supabase.from('gastos').delete().eq('fecha', fecha)
+  }
 }
 
 export async function deleteGastosByFecha(fecha) {
   if (!supabase) return
-  const { error } = await supabase.from('gastos').delete().eq('fecha', fecha).not('deleted_at', 'is', null)
+  const { error } = await supabase.from('gastos').delete().eq('fecha', fecha)
   if (error) console.error('deleteGastosByFecha:', error)
 }
 
@@ -175,8 +180,13 @@ export async function insertIngreso(ingreso) {
 
 export async function autoPurge() {
   if (!supabase) return
-  const cutoff = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
-  await supabase.from('gastos').delete().lt('deleted_at', cutoff)
-  await supabase.from('ingresos').delete().lt('deleted_at', cutoff)
-  console.log('Auto-purge: cleaned records deleted before', cutoff.slice(0, 10))
+  try {
+    const cutoff = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
+    await supabase.from('gastos').delete().lt('deleted_at', cutoff)
+    await supabase.from('ingresos').delete().lt('deleted_at', cutoff)
+    console.log('Auto-purge: cleaned records deleted before', cutoff.slice(0, 10))
+  } catch (e) {
+    // Safe to fail if deleted_at column doesn't exist yet
+    console.log('Auto-purge skipped (column may not exist yet)')
+  }
 }
