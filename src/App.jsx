@@ -1668,9 +1668,8 @@ export default function App() {
   if (user === undefined || !data) return (
     <div style={{minHeight:'100svh',background:T.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20,padding:'40px 32px'}}>
       <UpdateBanner/>
-      <div style={{width:60,height:60,borderRadius:18,background:T.brandGold,display:'flex',alignItems:'center',justifyContent:'center'}}>
-        <RefreshCw size={26} color='#fff' strokeWidth={1.75} style={{animation:'spin 1s linear infinite'}}/>
-      </div>
+      <img src="/logo-cashipop.png?v=1" alt="Cashipop" style={{width:72,height:72,borderRadius:20,objectFit:'cover',animation:'pulse 2s infinite'}}/>
+      <style>{`@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(.95)}}`}</style>
       <p style={{fontSize:16,fontWeight:700,color:T.navy,textAlign:'center',lineHeight:1.5}}>{FRASES_PODER[fraseIdx]}</p>
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     </div>
@@ -1681,9 +1680,7 @@ export default function App() {
     <div style={{minHeight:'100svh',background:T.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 28px',gap:24}}>
       <UpdateBanner/>
       <div style={{textAlign:'center',marginBottom:8}}>
-        <div style={{width:64,height:64,borderRadius:20,background:'linear-gradient(145deg,#3D2539,#5E405B)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px',boxShadow:'0 8px 32px rgba(94,64,91,0.2)'}}>
-          <DollarSign size={28} color={T.brandGold} strokeWidth={1.75}/>
-        </div>
+        <img src="/logo-cashipop.png?v=1" alt="Cashipop" style={{width:80,height:80,borderRadius:22,objectFit:'cover',margin:'0 auto 14px',boxShadow:'0 8px 32px rgba(94,64,91,0.15)'}}/>
         <h1 style={{fontSize:26,fontWeight:900,color:T.navy,letterSpacing:'-.03em'}}>Cashipop</h1>
         <p style={{fontSize:14,color:T.sub,marginTop:6}}>Tu sistema de control financiero</p>
       </div>
@@ -2276,11 +2273,14 @@ export default function App() {
     <div style={{minHeight:'100svh',background:T.bg,padding:'52px 20px 96px',overflowY:'auto'}}>
 
       <UpdateBanner/>
-      {/* Header row 1: titulo + iconos */}
+      {/* Header row 1: logo + iconos */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
-        <div>
-          <p style={{fontSize:10,color:T.muted,fontWeight:600,letterSpacing:'.06em'}}>{fDate(data.fecha).toUpperCase()}</p>
-          <h1 style={{fontSize:24,fontWeight:900,color:T.navy,letterSpacing:'-.03em',lineHeight:1.2,marginTop:3}}>Cashipop</h1>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <img src="/logo-cashipop.png?v=1" alt="Cashipop" style={{width:40,height:40,borderRadius:12,objectFit:'cover'}}/>
+          <div>
+            <p style={{fontSize:10,color:T.muted,fontWeight:600,letterSpacing:'.06em'}}>{fDate(data.fecha).toUpperCase()}</p>
+            <h1 style={{fontSize:22,fontWeight:900,color:T.navy,letterSpacing:'-.03em',lineHeight:1.2,marginTop:1}}>Cashipop</h1>
+          </div>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:5}}>
           <WaBtn onClick={()=>enviarResumen()}/>
