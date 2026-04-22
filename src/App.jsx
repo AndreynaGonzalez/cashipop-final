@@ -76,10 +76,10 @@ function cargarHistorial() {
 const FRASES_PODER = [
   'Cashipop brilla hoy gracias a ti, Arcelia.',
   'Tu esfuerzo construye el futuro.',
-  'Eres la jefa de tu destino, preparando tus numeros...',
-  'Cada dia es una oportunidad para crecer.',
-  'Los numeros no mienten, y los tuyos van bien.',
-  'Orden y constancia, la receta del exito.',
+  'Eres la jefa de tu destino, preparando tus números...',
+  'Cada día es una oportunidad para crecer.',
+  'Los números no mienten, y los tuyos van bien.',
+  'Orden y constancia, la receta del éxito.',
 ]
 
 function dataVacia(tasa = 481.21) {
@@ -611,7 +611,7 @@ function BottomNav({ pantalla, go }) {
     { id:'home',      label:'Inicio',    Icon:Home        },
     { id:'gastos',    label:'Gastos',    Icon:Receipt     },
     { id:'cierre',    label:'Cierre',    Icon:BarChart3   },
-    { id:'metricas',  label:'Metricas',  Icon:PieIcon     },
+    { id:'metricas',  label:'Métricas',  Icon:PieIcon     },
     { id:'historial', label:'Historial', Icon:CalendarDays},
   ]
   return (
@@ -647,7 +647,7 @@ function BottomNav({ pantalla, go }) {
 const SAVING_MSGS = [
   'Guardando ingresos en la base de datos...',
   'Sincronizando con el historial...',
-  '¡Casi listo, Cashipop esta brillando!',
+  '¡Casi listo, Cashipop está brillando!',
 ]
 
 function SavingOverlay({ active, msg }) {
@@ -912,7 +912,7 @@ export default function App() {
 
         // 3. Guardar en papelera local
         addToLocalTrash(trashCopy)
-        showToast('¡Enviado a la papelera! (15 dias para restaurar)')
+        showToast('¡Enviado a la papelera! (15 días para restaurar)')
       },
     })
   }
@@ -975,7 +975,7 @@ export default function App() {
 
         if (saved === 0) {
           clearInterval(msgInterval); setSaving(false)
-          showToast('¡Ups! No pudimos guardar el cierre. Revisa tu conexion e intenta de nuevo.', 5000)
+          showToast('¡Ups! No pudimos guardar el cierre. Revisa tu conexión e intenta de nuevo.', 5000)
           return
         }
 
@@ -988,7 +988,7 @@ export default function App() {
       showToast(`¡Caja cerrada! ${rows.length} ingresos guardados`)
     } catch {
       clearInterval(msgInterval); setSaving(false)
-      showToast('¡Ups! No pudimos guardar el cierre. Revisa tu conexion e intenta de nuevo.', 5000)
+      showToast('¡Ups! No pudimos guardar el cierre. Revisa tu conexión e intenta de nuevo.', 5000)
     }
   }
 
@@ -1031,7 +1031,7 @@ export default function App() {
       go('cierre')
     } catch {
       clearInterval(mi); setSaving(false)
-      showToast('¡Ups! No pudimos guardar. Revisa tu conexion.', 5000)
+      showToast('¡Ups! No pudimos guardar. Revisa tu conexión.', 5000)
     }
   }
 
@@ -1103,7 +1103,7 @@ export default function App() {
   function reabrirCaja() {
     const nueva = { ...data, cerrada: false }
     setData(nueva); guardarData(nueva)
-    showToast('¡No pasa nada, Arcelia! Corrijamos los numeros juntos.', 3500)
+    showToast('¡No pasa nada, Arcelia! Corrijamos los números juntos.', 3500)
   }
 
   // Cargar cierre de un dia pasado para editar
@@ -1132,9 +1132,9 @@ export default function App() {
 
   async function borrarCierreHistorico(fecha) {
     setConfirm({
-      title: '¿Borrar cierre del dia?',
+      title: '¿Borrar cierre del día?',
       body: <p style={{fontSize:15,color:T.sub,textAlign:'center',lineHeight:1.6}}>
-        ¿Estas segura de borrar el cierre del <strong style={{color:T.navy}}>{fDate(fecha)}</strong>? Los ingresos iran a la papelera por 15 dias. Los gastos NO se tocan.
+        ¿Estás segura de borrar el cierre del <strong style={{color:T.navy}}>{fDate(fecha)}</strong>? Los ingresos iran a la papelera por 15 días. Los gastos NO se tocan.
       </p>,
       yesLabel: 'Mandar a la papelera',
       noLabel: 'No, dejarlo',
@@ -1296,7 +1296,7 @@ export default function App() {
         showToast(`¡Cierre aplicado! ${rows.length} ingresos guardados`)
       } catch {
         clearInterval(mi); setSaving(false)
-        showToast('¡Ups! No pudimos guardar el cierre. Revisa tu conexion.', 5000)
+        showToast('¡Ups! No pudimos guardar el cierre. Revisa tu conexión.', 5000)
       }
     } else {
       go('ingresos')
@@ -1423,7 +1423,7 @@ export default function App() {
           'not-allowed': 'Permiso de microfono denegado. Activa el microfono en ajustes.',
           'no-speech': 'No detecte voz. Intenta de nuevo.',
           'audio-capture': 'No se encontro microfono.',
-          'network': 'Error de red. Verifica tu conexion.',
+          'network': 'Error de red. Verifica tu conexión.',
         }
         showToast(errMap[e.error] || `Error de voz: ${e.error}`)
         console.error('SpeechRecognition error:', e.error)
@@ -1571,7 +1571,7 @@ export default function App() {
         setAuthError('Algo salio mal. Intenta de nuevo en un momento.')
       }
     } catch {
-      setAuthError('Sin conexion. Verifica tu internet.')
+      setAuthError('Sin conexión. Verifica tu internet.')
     }
     setAuthLoading(false)
   }
@@ -1581,15 +1581,15 @@ export default function App() {
     setAuthLoading(true)
     const { error } = await supabase.auth.resetPasswordForEmail(authEmail)
     setAuthLoading(false)
-    if (error) setAuthError('No pudimos enviar el correo. Verifica la direccion.')
+    if (error) setAuthError('No pudimos enviar el correo. Verifica la dirección.')
     else setAuthError('¡Revisa tu correo! Te enviamos un link para cambiar tu clave.')
   }
 
   function handleLogout() {
     setConfirm({
-      title: '¿Cerrar sesion?',
-      msg: '¿Estas segura de que deseas salir de Cashipop?',
-      yesLabel: 'Cerrar sesion',
+      title: '¿Cerrar sesión?',
+      msg: '¿Estás segura de que deseas salir de Cashipop?',
+      yesLabel: 'Cerrar sesión',
       noLabel: 'Quedarme',
       yesColor: T.rose,
       onYes: async () => { await signOut(); setUser(null); setConfirm(null) },
@@ -1624,7 +1624,7 @@ export default function App() {
         <div style={{display:'flex',flexDirection:'column',gap:14}}>
           <div>
             <p style={{fontSize:12,fontWeight:700,color:T.muted,letterSpacing:'.06em',marginBottom:6}}>CORREO</p>
-            <input type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="arcelia@andinopop.com"
+            <input type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="Escribe tu correo aquí..."
               onKeyDown={e=>e.key==='Enter'&&handleAuth()}
               style={{width:'100%',height:48,paddingLeft:14,fontSize:15,fontWeight:600,border:`1.5px solid ${T.border}`,borderRadius:14,outline:'none',color:T.navy,background:T.bg}}/>
           </div>
@@ -1656,7 +1656,7 @@ export default function App() {
       </Card>
 
       <p style={{fontSize:12,color:T.muted,textAlign:'center',marginTop:8,lineHeight:1.5}}>
-        Escribe tu correo y contraseña. Si no tienes cuenta, se crea automaticamente.
+        Escribe tu correo y contraseña. Si no tienes cuenta, se crea automáticamente.
       </p>
     </div>
   )
@@ -1842,7 +1842,7 @@ export default function App() {
               <div style={{display:'flex',alignItems:'center',gap:6,marginTop:12}}>
                 <CheckCircle size={14} color={T.forest} strokeWidth={1.75}/>
                 <span style={{fontSize:12,fontWeight:600,color:T.forest}}>
-                  {coincide ? '¡Los numeros coinciden!' : '¡Ajuste aplicado automaticamente!'}
+                  {coincide ? '¡Los números coinciden!' : '¡Ajuste aplicado automáticamente!'}
                 </span>
               </div>
             )}
@@ -2094,7 +2094,7 @@ export default function App() {
               {liveTranscript || 'Escuchando...'}
             </p>
 
-            <p style={{fontSize:11,color:'rgba(255,255,255,0.4)',textAlign:'center',marginBottom:16}}>5 segundos de silencio para enviar automaticamente</p>
+            <p style={{fontSize:11,color:'rgba(255,255,255,0.4)',textAlign:'center',marginBottom:16}}>5 segundos de silencio para enviar automáticamente</p>
 
             {/* Botones: Listo + Cancelar */}
             <div style={{display:'flex',gap:8}}>
@@ -2609,7 +2609,7 @@ export default function App() {
           </>
         ) : (esHoy || tieneIngresosLocal) && (
           <Btn onClick={cerrarCaja} bg={T.navy} full icon={Lock} style={{padding:'16px',fontSize:14,boxShadow:'0 4px 0 rgba(0,0,0,0.25)'}}>
-            Cerrar Caja {esHoy ? 'del Dia' : `del ${fDate(fechaCierre)}`}
+            Cerrar Caja {esHoy ? 'del Día' : `del ${fDate(fechaCierre)}`}
           </Btn>
         )}
 
@@ -2689,7 +2689,7 @@ export default function App() {
     const cambioSemanal = gasSemanaAnt > 0 ? Math.round((gasSemana - gasSemanaAnt) / gasSemanaAnt * 100) : 0
 
     const insights = []
-    if (maxDia > 0) insights.push(`Los ${diasNombreFull[maxDia].toLowerCase()} son tu dia de mayor gasto (${fUSD(gastoPorDia[maxDia])} acumulado). Planifica con anticipacion.`)
+    if (maxDia > 0) insights.push(`Los ${diasNombreFull[maxDia].toLowerCase()} son tu día de mayor gasto (${fUSD(gastoPorDia[maxDia])} acumulado). Planifica con anticipación.`)
     if (topCatPct > 30) insights.push(`${topCat} representa el ${topCatPct}% de tus gastos. ${topCatPct > 45 ? 'Busca alternativas de proveedor.' : 'Manten el control.'}`)
     if (cambioSemanal < -10) insights.push(`Esta semana redujiste gastos un ${Math.abs(cambioSemanal)}% vs la anterior. Sigue asi.`)
     else if (cambioSemanal > 20) insights.push(`Ojo: los gastos subieron un ${cambioSemanal}% esta semana vs la anterior.`)
@@ -2979,19 +2979,19 @@ export default function App() {
       async function handleRestore(item) {
         if (item._fromLocal) {
           await restoreFromLocalTrash(item)
-          showToast('¡Registro restaurado con exito!')
+          showToast('¡Registro restaurado con éxito!')
           return
         }
         let ok = false
         if (item._tipo === 'gasto') { ok = await restoreGasto(item.id); setDbGastos(await fetchGastos()); setTrashGastos(await fetchGastosTrash()) }
         else { ok = await restoreIngreso(item.id); setDbIngresos(await fetchIngresos()); setTrashIngresos(await fetchIngresosTrash()) }
-        showToast(ok ? '¡Registro restaurado con exito!' : '¡Error al restaurar!')
+        showToast(ok ? '¡Registro restaurado con éxito!' : '¡Error al restaurar!')
       }
 
       function vaciarPapelera() {
         setConfirm({
           title: '¿Vaciar papelera?',
-          msg: '¿Estas segura? Esta accion no se puede deshacer.',
+          msg: '¿Estás segura? Esta acción no se puede deshacer.',
           yesLabel: 'Vaciar todo',
           noLabel: 'Cancelar',
           yesColor: T.rose,
@@ -3011,13 +3011,13 @@ export default function App() {
       return (
         <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 96px',overflowY:'auto'}}>
           <InnerHeader title="Papelera" onBack={()=>setShowTrash(false)}/>
-          <p style={{fontSize:13,color:T.sub,marginBottom:20}}>Los registros se eliminan automaticamente despues de 15 dias</p>
+          <p style={{fontSize:13,color:T.sub,marginBottom:20}}>Los registros se eliminan automáticamente después de 15 dias</p>
 
           {allTrash.length === 0 ? (
             <Card style={{textAlign:'center',padding:48,borderRadius:28}}>
               <Trash size={36} color={T.muted} strokeWidth={1.25} style={{margin:'0 auto'}}/>
-              <p style={{fontSize:18,fontWeight:800,color:T.navy,marginTop:16}}>¡Tu papelera esta vacia!</p>
-              <p style={{fontSize:13,color:T.sub,marginTop:8,lineHeight:1.5}}>Los gastos borrados apareceran aqui por 15 dias</p>
+              <p style={{fontSize:18,fontWeight:800,color:T.navy,marginTop:16}}>¡Tu papelera está vacía!</p>
+              <p style={{fontSize:13,color:T.sub,marginTop:8,lineHeight:1.5}}>Los gastos borrados aparecerán aquí por 15 días</p>
               <Btn onClick={()=>{setShowTrash(false);go('home')}} bg={T.brand} style={{marginTop:20,padding:'12px 24px',fontSize:13}} icon={Home}>
                 Ir al inicio
               </Btn>
@@ -3079,7 +3079,7 @@ export default function App() {
           <Card style={{textAlign:'center',padding:48,borderRadius:32}}>
             <CalendarDays size={34} color={T.muted} strokeWidth={1.5} style={{margin:'0 auto'}}/>
             <p style={{fontSize:15,fontWeight:700,color:T.navy,marginTop:14}}>Sin registros anteriores</p>
-            <p style={{fontSize:13,color:T.sub,marginTop:6}}>Los cierres del dia apareceran aqui</p>
+            <p style={{fontSize:13,color:T.sub,marginTop:6}}>Los cierres del día aparecerán aquí</p>
           </Card>
         ) : (
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
