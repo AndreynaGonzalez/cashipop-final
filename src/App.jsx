@@ -713,6 +713,9 @@ export default function App() {
   const [trashIngresos, setTrashIngresos] = useState([])
   const [showTrash,  setShowTrash]  = useState(false)
   const [papeleraOk, setPapeleraOk] = useState(false)
+  const [localTrash, setLocalTrash] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('CP_TRASH') || '[]') } catch { return [] }
+  })
   const [saving,     setSaving]     = useState(false)
   const [savingMsg,  setSavingMsg]  = useState('')
   const [ingDirty,   setIngDirty]   = useState(false)
@@ -884,23 +887,26 @@ export default function App() {
       noLabel: 'No, dejarlo',
       yesColor: T.rose,
       onYes: async () => {
+        // Guardar copia para la papelera ANTES de borrar
+        const trashCopy = { ...g, _tipo: 'gasto' }
+
+        // Quitar del estado local inmediatamente
         const nueva = { ...data, gastos: data.gastos.filter(x => x.id !== g.id) }
         setData(nueva); guardarData(nueva)
+        setDbGastos(prev => prev.filter(x => x.id !== g.id))
         setConfirm(null)
 
         if (typeof g.id === 'number' && g.id > 0 && g.id < 1e12) {
           if (papeleraOk) {
-            const ok = await softDeleteGasto(g.id)
-            setDbGastos(prev => prev.filter(x => x.id !== g.id))
-            showToast(ok ? '¡Enviado a la papelera! (15 dias para restaurar)' : '¡Gasto eliminado!')
+            await softDeleteGasto(g.id)
           } else {
             await deleteGasto(g.id)
-            setDbGastos(prev => prev.filter(x => x.id !== g.id))
-            showToast('¡Gasto eliminado! (papelera no disponible, ejecuta ALTER TABLE)')
+            addToLocalTrash(trashCopy)
           }
         } else {
-          showToast('¡Gasto eliminado!')
+          addToLocalTrash(trashCopy)
         }
+        showToast('¡Enviado a la papelera! (15 dias para restaurar)')
       },
     })
   }
@@ -1035,6 +1041,37 @@ export default function App() {
     })
   }
 
+  function addToLocalTrash(item) {
+    const entry = { ...item, deleted_at: new Date().toISOString(), _tipo: item._tipo || 'gasto' }
+    const updated = [entry, ...localTrash].slice(0, 100)
+    setLocalTrash(updated)
+    localStorage.setItem('CP_TRASH', JSON.stringify(updated))
+  }
+
+  async function restoreFromLocalTrash(item) {
+    // Re-insert into Supabase
+    if (item._tipo === 'ingreso') {
+      await insertIngreso(item)
+      setDbIngresos(await fetchIngresos())
+    } else {
+      await insertGasto(item)
+      setDbGastos(await fetchGastos())
+    }
+    const updated = localTrash.filter(t => !(t.id === item.id && t._tipo === item._tipo))
+    setLocalTrash(updated)
+    localStorage.setItem('CP_TRASH', JSON.stringify(updated))
+  }
+
+  // Auto-purge local trash > 15 days
+  useEffect(() => {
+    const cutoff = Date.now() - 15 * 24 * 60 * 60 * 1000
+    const cleaned = localTrash.filter(t => new Date(t.deleted_at).getTime() > cutoff)
+    if (cleaned.length !== localTrash.length) {
+      setLocalTrash(cleaned)
+      localStorage.setItem('CP_TRASH', JSON.stringify(cleaned))
+    }
+  }, [])
+
   function reabrirCaja() {
     const nueva = { ...data, cerrada: false }
     setData(nueva); guardarData(nueva)
@@ -1075,18 +1112,21 @@ export default function App() {
       noLabel: 'No, dejarlo',
       yesColor: T.rose,
       onYes: async () => {
+        // Guardar copia de ingresos para papelera local
+        const ingDel = dbIngresos.filter(i => i.fecha === fecha)
+
         if (supabase) {
           if (papeleraOk) {
             await softDeleteIngresosByFecha(fecha)
-            showToast('¡Cierre enviado a la papelera! (15 dias)')
           } else {
+            ingDel.forEach(ig => addToLocalTrash({ ...ig, _tipo: 'ingreso' }))
             await deleteIngresosByFecha(fecha)
-            showToast('¡Cierre eliminado! (papelera no disponible)')
           }
           const [g, i] = await Promise.all([fetchGastos(), fetchIngresos()])
           setDbGastos(g); setDbIngresos(i)
         }
         setConfirm(null); setHistItem(null)
+        showToast('¡Cierre enviado a la papelera! (15 dias)')
       },
     })
   }
@@ -2124,7 +2164,7 @@ export default function App() {
             <div style={{display:'flex',alignItems:'center',gap:4,background:tasaStale?'#FFF7E8':T.amberLight,border:`1.5px solid ${tasaStale?T.brandGold:T.brandGold+'44'}`,borderRadius:14,padding:'5px 8px'}}>
               <Edit3 size={11} color={tasaStale?T.brandGold:T.muted} strokeWidth={1.75}/>
               <span style={{fontSize:11,fontWeight:700,color:T.brand}}>Bs</span>
-              <input type="text" inputMode="decimal"
+              <input type="text" inputMode="decimal" data-tasa-input
                 value={tasaTemp}
                 onChange={e => onTasaInput(e.target.value)}
                 onBlur={onTasaBlur}
@@ -2133,7 +2173,7 @@ export default function App() {
               />
             </div>
             <div style={{display:'flex',alignItems:'center',gap:6}}>
-              {tasaStale && <span style={{fontSize:9,color:T.brandGold,fontWeight:700}}>¿Es la tasa actual?</span>}
+              {tasaStale && <button onClick={()=>{const el=document.querySelector('[data-tasa-input]');el?.focus();el?.select()}} style={{background:'none',border:'none',cursor:'pointer',fontSize:9,color:T.brandGold,fontWeight:700,padding:0,WebkitTapHighlightColor:'transparent'}}>¿Es la tasa actual? Toca para cambiar</button>}
               <a href="https://www.instagram.com/bcv.org.ve/" target="_blank" rel="noopener noreferrer" style={{fontSize:9,fontWeight:700,color:T.muted,textDecoration:'none',display:'flex',alignItems:'center',gap:3}}>
                 Ver oficial
                 <ChevronRight size={9} color={T.muted} strokeWidth={2}/>
@@ -2826,29 +2866,29 @@ export default function App() {
 
     // ── Papelera ──
     if (showTrash) {
-      const allTrash = [...trashGastos.map(g=>({...g,_tipo:'gasto'})), ...trashIngresos.map(i=>({...i,_tipo:'ingreso'}))].sort((a,b)=>(b.deleted_at||'').localeCompare(a.deleted_at||''))
+      const allTrash = [...trashGastos.map(g=>({...g,_tipo:'gasto'})), ...trashIngresos.map(i=>({...i,_tipo:'ingreso'})), ...localItems].sort((a,b)=>(b.deleted_at||'').localeCompare(a.deleted_at||''))
 
       async function handleRestore(item) {
+        if (item._fromLocal) {
+          await restoreFromLocalTrash(item)
+          showToast('¡Registro restaurado con exito!')
+          return
+        }
         let ok = false
         if (item._tipo === 'gasto') { ok = await restoreGasto(item.id); setDbGastos(await fetchGastos()); setTrashGastos(await fetchGastosTrash()) }
         else { ok = await restoreIngreso(item.id); setDbIngresos(await fetchIngresos()); setTrashIngresos(await fetchIngresosTrash()) }
         showToast(ok ? '¡Registro restaurado con exito!' : '¡Error al restaurar!')
       }
 
+      // Merge Supabase trash + local trash
+      const localItems = localTrash.map(t => ({ ...t, _fromLocal: true }))
+
       return (
         <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 96px',overflowY:'auto'}}>
           <InnerHeader title="Papelera" onBack={()=>setShowTrash(false)}/>
           <p style={{fontSize:13,color:T.sub,marginBottom:20}}>Los registros se eliminan definitivamente despues de 15 dias</p>
 
-          {!papeleraOk && (
-            <Card style={{marginBottom:16,background:'#FFF0EB',border:`1px solid ${T.rose}22`,padding:'16px 18px'}}>
-              <p style={{fontSize:13,fontWeight:700,color:T.rose,marginBottom:4}}>Papelera no disponible</p>
-              <p style={{fontSize:12,color:T.sub,lineHeight:1.5}}>Falta ejecutar en Supabase SQL Editor:</p>
-              <p style={{fontSize:11,color:T.navy,fontWeight:600,background:T.surface,padding:'8px 10px',borderRadius:8,marginTop:6,fontFamily:'monospace'}}>ALTER TABLE gastos ADD COLUMN deleted_at timestamptz;<br/>ALTER TABLE ingresos ADD COLUMN deleted_at timestamptz;</p>
-            </Card>
-          )}
-
-          {allTrash.length === 0 && papeleraOk ? (
+          {allTrash.length === 0 ? (
             <Card style={{textAlign:'center',padding:48,borderRadius:28}}>
               <Trash size={30} color={T.muted} strokeWidth={1.5} style={{margin:'0 auto'}}/>
               <p style={{fontSize:15,fontWeight:700,color:T.navy,marginTop:14}}>Papelera vacia</p>
