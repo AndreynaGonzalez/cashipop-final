@@ -9,7 +9,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['favicon.ico', 'apple-touch-icon-180x180.png', 'icon.svg'],
+      includeAssets: ['logo.png'],
       manifest: {
         name: 'Cashipop — Control de Caja',
         short_name: 'Cashipop',
@@ -20,10 +20,8 @@ export default defineConfig({
         orientation: 'portrait',
         start_url: '/',
         icons: [
-          { src: 'logo-cashipop.png', sizes: '1000x1000', type: 'image/png', purpose: 'any' },
-          { src: 'logo-cashipop.png', sizes: '1000x1000', type: 'image/png', purpose: 'maskable' },
-          { src: 'pwa-192x192.png',   sizes: '192x192',   type: 'image/png' },
-          { src: 'pwa-512x512.png',   sizes: '512x512',   type: 'image/png' },
+          { src: 'logo.png', sizes: '1000x1000', type: 'image/png', purpose: 'any' },
+          { src: 'logo.png', sizes: '1000x1000', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {

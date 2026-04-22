@@ -1668,7 +1668,7 @@ export default function App() {
   if (user === undefined || !data) return (
     <div style={{minHeight:'100svh',background:T.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20,padding:'40px 32px'}}>
       <UpdateBanner/>
-      <img src="/logo-cashipop.png?v=1" alt="Cashipop" style={{width:72,height:72,borderRadius:20,objectFit:'cover',animation:'pulse 2s infinite'}}/>
+      <img src="/logo.png?v=2" alt="Cashipop" style={{width:72,height:72,borderRadius:20,objectFit:'cover',animation:'pulse 2s infinite'}}/>
       <style>{`@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(.95)}}`}</style>
       <p style={{fontSize:16,fontWeight:700,color:T.navy,textAlign:'center',lineHeight:1.5}}>{FRASES_PODER[fraseIdx]}</p>
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
@@ -1680,7 +1680,7 @@ export default function App() {
     <div style={{minHeight:'100svh',background:T.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 28px',gap:24}}>
       <UpdateBanner/>
       <div style={{textAlign:'center',marginBottom:8}}>
-        <img src="/logo-cashipop.png?v=1" alt="Cashipop" style={{width:80,height:80,borderRadius:22,objectFit:'cover',margin:'0 auto 14px',boxShadow:'0 8px 32px rgba(94,64,91,0.15)'}}/>
+        <img src="/logo.png?v=2" alt="Cashipop" style={{width:80,height:80,borderRadius:22,objectFit:'cover',margin:'0 auto 14px',boxShadow:'0 8px 32px rgba(94,64,91,0.15)'}}/>
         <h1 style={{fontSize:26,fontWeight:900,color:T.navy,letterSpacing:'-.03em'}}>Cashipop</h1>
         <p style={{fontSize:14,color:T.sub,marginTop:6}}>Tu sistema de control financiero</p>
       </div>
@@ -2276,7 +2276,7 @@ export default function App() {
       {/* Header row 1: logo + iconos */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <img src="/logo-cashipop.png?v=1" alt="Cashipop" style={{width:40,height:40,borderRadius:12,objectFit:'cover'}}/>
+          <img src="/logo.png?v=2" alt="Cashipop" style={{width:40,height:40,borderRadius:12,objectFit:'cover'}}/>
           <div>
             <p style={{fontSize:10,color:T.muted,fontWeight:600,letterSpacing:'.06em'}}>{fDate(data.fecha).toUpperCase()}</p>
             <h1 style={{fontSize:22,fontWeight:900,color:T.navy,letterSpacing:'-.03em',lineHeight:1.2,marginTop:1}}>Cashipop</h1>
