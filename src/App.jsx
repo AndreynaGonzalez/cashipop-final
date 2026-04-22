@@ -6,7 +6,7 @@ import {
   TrendingUp, TrendingDown, CheckCircle, AlertCircle,
   Camera, Mic, MicOff, Lock, Plus, Trash2, ArrowLeft,
   RefreshCw, ChevronRight, Edit3, CreditCard, Package,
-  X, Lightbulb, Calendar, RotateCcw, Trash,
+  X, Lightbulb, Calendar, RotateCcw, Trash, Eye, EyeOff, LogOut,
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 
@@ -686,6 +686,7 @@ export default function App() {
   const [authMode,   setAuthMode]   = useState('login') // 'login' | 'register'
   const [authError,  setAuthError]  = useState('')
   const [authLoading,setAuthLoading]= useState(false)
+  const [showPass,   setShowPass]   = useState(false)
   const [pantalla,   setPantalla]   = useState('home')
   const [data,       setData]       = useState(null)
   const [confetti,   setConfetti]   = useState(false)
@@ -1575,6 +1576,26 @@ export default function App() {
     setAuthLoading(false)
   }
 
+  async function resetPassword() {
+    if (!authEmail) { setAuthError('Escribe tu correo arriba primero'); return }
+    setAuthLoading(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(authEmail)
+    setAuthLoading(false)
+    if (error) setAuthError('No pudimos enviar el correo. Verifica la direccion.')
+    else setAuthError('¡Revisa tu correo! Te enviamos un link para cambiar tu clave.')
+  }
+
+  function handleLogout() {
+    setConfirm({
+      title: '¿Cerrar sesion?',
+      msg: '¿Estas segura de que deseas salir de Cashipop?',
+      yesLabel: 'Cerrar sesion',
+      noLabel: 'Quedarme',
+      yesColor: T.rose,
+      onYes: async () => { await signOut(); setUser(null); setConfirm(null) },
+    })
+  }
+
   // ── Loading screen ─────────────────────────────────────────────────────────
   const fraseIdx = Math.floor(Date.now() / 3000) % FRASES_PODER.length
 
@@ -1609,20 +1630,28 @@ export default function App() {
           </div>
           <div>
             <p style={{fontSize:12,fontWeight:700,color:T.muted,letterSpacing:'.06em',marginBottom:6}}>CONTRASENA</p>
-            <input type="password" value={authPass} onChange={e=>setAuthPass(e.target.value)} placeholder="Min. 6 caracteres"
-              onKeyDown={e=>e.key==='Enter'&&handleAuth()}
-              style={{width:'100%',height:48,paddingLeft:14,fontSize:15,fontWeight:600,border:`1.5px solid ${T.border}`,borderRadius:14,outline:'none',color:T.navy,background:T.bg}}/>
+            <div style={{position:'relative'}}>
+              <input type={showPass?'text':'password'} value={authPass} onChange={e=>setAuthPass(e.target.value)} placeholder="Min. 6 caracteres"
+                onKeyDown={e=>e.key==='Enter'&&handleAuth()}
+                style={{width:'100%',height:48,paddingLeft:14,paddingRight:48,fontSize:15,fontWeight:600,border:`1.5px solid ${T.border}`,borderRadius:14,outline:'none',color:T.navy,background:T.bg}}/>
+              <button onClick={()=>setShowPass(!showPass)} type="button" style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',padding:0}}>
+                {showPass ? <EyeOff size={18} color={T.muted} strokeWidth={1.75}/> : <Eye size={18} color={T.muted} strokeWidth={1.75}/>}
+              </button>
+            </div>
           </div>
           {authError && (
             <p style={{fontSize:13,fontWeight:600,textAlign:'center',lineHeight:1.4,
-              color: authError.includes('creada') ? T.forest : T.sub,
-              background: authError.includes('creada') ? T.forestLight : T.amberLight,
+              color: (authError.includes('creada')||authError.includes('Revisa tu correo')) ? T.forest : T.sub,
+              background: (authError.includes('creada')||authError.includes('Revisa tu correo')) ? T.forestLight : T.amberLight,
               padding:'10px 14px',borderRadius:12,
             }}>{authError}</p>
           )}
           <Btn onClick={handleAuth} bg={T.brandGold} color={T.brand} full style={{padding:'16px',fontSize:15,marginTop:4}}>
             {authLoading ? FRASES_AUTH[Math.floor(Date.now()/2000)%FRASES_AUTH.length] : 'Entrar'}
           </Btn>
+          <button onClick={resetPassword} type="button" style={{background:'none',border:'none',color:T.muted,fontSize:13,fontWeight:600,cursor:'pointer',width:'100%',textAlign:'center',marginTop:6}}>
+            ¿Olvidaste tu contrasena?
+          </button>
         </div>
       </Card>
 
@@ -2179,34 +2208,33 @@ export default function App() {
     <div style={{minHeight:'100svh',background:T.bg,padding:'52px 20px 96px',overflowY:'auto'}}>
 
       {/* Header */}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:28}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
         <div>
-          <p style={{fontSize:12,color:T.muted,fontWeight:600,letterSpacing:'.04em'}}>{fDate(data.fecha).toUpperCase()}</p>
-          <h1 style={{fontSize:25,fontWeight:900,color:T.navy,letterSpacing:'-.03em',lineHeight:1.15,marginTop:3}}>Cashipop</h1>
+          <p style={{fontSize:11,color:T.muted,fontWeight:600,letterSpacing:'.05em'}}>{fDate(data.fecha).toUpperCase()}</p>
+          <h1 style={{fontSize:24,fontWeight:900,color:T.navy,letterSpacing:'-.03em',lineHeight:1.15,marginTop:2}}>Cashipop</h1>
         </div>
-        {/* Acciones terciarias: WA + Tasa */}
-        <div style={{display:'flex',alignItems:'center',gap:8,marginTop:2}}>
-          <WaBtn onClick={()=>enviarResumen()}/>
-          <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3}}>
-            <div style={{display:'flex',alignItems:'center',gap:4,background:tasaStale?'#FFF7E8':T.amberLight,border:`1.5px solid ${tasaStale?T.brandGold:T.brandGold+'44'}`,borderRadius:14,padding:'5px 8px'}}>
-              <Edit3 size={11} color={tasaStale?T.brandGold:T.muted} strokeWidth={1.75}/>
-              <span style={{fontSize:11,fontWeight:700,color:T.brand}}>Bs</span>
-              <input type="text" inputMode="decimal" data-tasa-input
-                value={tasaTemp}
-                onChange={e => onTasaInput(e.target.value)}
-                onBlur={onTasaBlur}
-                onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                style={{width:72,height:30,fontSize:19,fontWeight:900,color:tasaStale?T.brandGold:T.brand,background:'transparent',border:'none',padding:0,outline:'none',textAlign:'right'}}
-              />
-            </div>
-            <div style={{display:'flex',alignItems:'center',gap:6}}>
-              {tasaStale && <button onClick={()=>{const el=document.querySelector('[data-tasa-input]');el?.focus();el?.select()}} style={{background:'none',border:'none',cursor:'pointer',fontSize:9,color:T.brandGold,fontWeight:700,padding:0,WebkitTapHighlightColor:'transparent'}}>¿Es la tasa actual? Toca para cambiar</button>}
-              <a href="https://www.instagram.com/bcv.org.ve/" target="_blank" rel="noopener noreferrer" style={{fontSize:9,fontWeight:700,color:T.muted,textDecoration:'none',display:'flex',alignItems:'center',gap:3}}>
-                Ver oficial
-                <ChevronRight size={9} color={T.muted} strokeWidth={2}/>
-              </a>
-            </div>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          {/* Tasa pill */}
+          <div style={{display:'flex',alignItems:'center',gap:3,background:T.amberLight,border:`1px solid ${T.brandGold}33`,borderRadius:20,padding:'4px 10px 4px 8px'}}>
+            <Edit3 size={10} color={T.muted} strokeWidth={1.75}/>
+            <span style={{fontSize:10,fontWeight:700,color:T.brand}}>Bs</span>
+            <input type="text" inputMode="decimal" data-tasa-input
+              value={tasaTemp}
+              onChange={e => onTasaInput(e.target.value)}
+              onBlur={onTasaBlur}
+              onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+              style={{width:58,height:22,fontSize:15,fontWeight:900,color:T.brand,background:'transparent',border:'none',padding:0,outline:'none',textAlign:'right'}}
+            />
+            <a href="https://www.instagram.com/bcv.org.ve/" target="_blank" rel="noopener noreferrer" style={{display:'flex',marginLeft:2,WebkitTapHighlightColor:'transparent'}}>
+              <ChevronRight size={11} color={T.muted} strokeWidth={2}/>
+            </a>
           </div>
+          {/* WA */}
+          <WaBtn onClick={()=>enviarResumen()}/>
+          {/* Logout */}
+          <button onClick={handleLogout} style={{width:30,height:30,borderRadius:8,border:'none',background:'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
+            <LogOut size={15} color={T.muted} strokeWidth={1.75}/>
+          </button>
         </div>
       </div>
 
