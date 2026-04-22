@@ -10,6 +10,26 @@ import {
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
 
+// ─── Update Banner ───────────────────────────────────────────────────────────
+function UpdateBanner() {
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    if (window.__CASHIPOP_UPDATE) setShow(true)
+    const handler = () => setShow(true)
+    window.addEventListener('cashipop-update', handler)
+    return () => window.removeEventListener('cashipop-update', handler)
+  }, [])
+  if (!show) return null
+  return (
+    <div style={{position:'fixed',top:0,left:0,right:0,zIndex:99999,background:'linear-gradient(135deg,#5E405B,#3D2539)',padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,boxShadow:'0 4px 20px rgba(0,0,0,0.2)'}}>
+      <span style={{color:'#fff',fontSize:14,fontWeight:600}}>Nueva mejora disponible</span>
+      <button onClick={()=>{setShow(false);if(window.__CASHIPOP_DO_UPDATE)window.__CASHIPOP_DO_UPDATE();else window.location.reload()}} style={{background:'#FFB752',color:'#5E405B',border:'none',borderRadius:12,padding:'8px 16px',fontSize:13,fontWeight:800,cursor:'pointer',whiteSpace:'nowrap'}}>
+        Actualizar ahora
+      </button>
+    </div>
+  )
+}
+
 // ─── Tokens de diseño — Cashipop Brand ──────────────────────────────────────
 const T = {
   bg:          '#FFF1DC',    // fondo cálido oficial
@@ -1647,6 +1667,7 @@ export default function App() {
 
   if (user === undefined || !data) return (
     <div style={{minHeight:'100svh',background:T.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20,padding:'40px 32px'}}>
+      <UpdateBanner/>
       <div style={{width:60,height:60,borderRadius:18,background:T.brandGold,display:'flex',alignItems:'center',justifyContent:'center'}}>
         <RefreshCw size={26} color='#fff' strokeWidth={1.75} style={{animation:'spin 1s linear infinite'}}/>
       </div>
@@ -1658,6 +1679,7 @@ export default function App() {
   // ── Login screen ───────────────────────────────────────────────────────────
   if (supabase && user === null) return (
     <div style={{minHeight:'100svh',background:T.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 28px',gap:24}}>
+      <UpdateBanner/>
       <div style={{textAlign:'center',marginBottom:8}}>
         <div style={{width:64,height:64,borderRadius:20,background:'linear-gradient(145deg,#3D2539,#5E405B)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px',boxShadow:'0 8px 32px rgba(94,64,91,0.2)'}}>
           <DollarSign size={28} color={T.brandGold} strokeWidth={1.75}/>
@@ -2253,6 +2275,7 @@ export default function App() {
   if (pantalla === 'home') return (
     <div style={{minHeight:'100svh',background:T.bg,padding:'52px 20px 96px',overflowY:'auto'}}>
 
+      <UpdateBanner/>
       {/* Header row 1: titulo + iconos */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
         <div>
