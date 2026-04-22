@@ -842,16 +842,23 @@ export default function App() {
   }
 
   function _commitGasto(g) {
-    const entry = {...g, concepto: capitalizar(g.concepto), id:Date.now()+Math.random()}
-    const nueva = {...data, gastos:[...data.gastos, entry]}
+    const concepto = capitalizar(g.concepto)
+    const montoNum = n(g.monto)
+    const montoUSD = g.moneda === 'USD' ? redondear(montoNum) : redondear(montoNum / data.tasa)
+    const entry = { ...g, concepto, monto: montoNum, montoUSD, id: Date.now() + Math.random() }
+
+    // Optimistic UI: agregar al estado local al instante
+    const nueva = { ...data, gastos: [entry, ...data.gastos] }
     setData(nueva); guardarData(nueva)
-    // Sync to Supabase
+
+    // Sync a Supabase
     insertGasto({
-      fecha: data.fecha,
-      concepto: entry.concepto,
-      monto: entry.moneda === 'USD' ? entry.monto : (parseFloat(entry.monto) / data.tasa),
-      moneda: entry.moneda,
+      fecha: getVzlaDate(),
+      concepto,
+      monto: montoUSD,
+      moneda: 'USD',
       categoria: entry.categoria || 'Insumos',
+      notas: g.moneda === 'BS' ? `Bs ${montoNum}` : null,
     }).then(row => {
       if (row) setDbGastos(prev => [row, ...prev])
     })
@@ -860,42 +867,55 @@ export default function App() {
 
   function agregarGasto(forzar=false) {
     const c = gasto.concepto.trim()
-    if (!c||!gasto.monto) { showToast('Completa el gasto'); return }
+    const montoNum = n(gasto.monto)
+
+    // Validaciones
+    if (!c) { showToast('Escribe el concepto del gasto'); return }
+    if (!montoNum || montoNum <= 0) { showToast('¡Cuidado! El monto no es válido.'); return }
+    if (isNaN(montoNum)) { showToast('¡Cuidado! El monto no es válido.'); return }
+
     if (!forzar) {
-      const dup = data.gastos.find(g=>g.concepto.toLowerCase()===c.toLowerCase()&&g.monto===gasto.monto&&g.moneda===gasto.moneda)
+      const dup = data.gastos.find(g => g.concepto?.toLowerCase() === c.toLowerCase() && n(g.monto) === montoNum && g.moneda === gasto.moneda)
       if (dup) {
-        setConfirm({title:'¿Gasto duplicado?',msg:`"${c}" ya esta anotado hoy. ¿Quieres guardarlo de nuevo?`,yesLabel:'Guardar igual',noLabel:'Cancelar',onYes:()=>{setConfirm(null);agregarGasto(true)}})
+        setConfirm({ title: '¿Gasto duplicado?', msg: `"${c}" ya está anotado hoy. ¿Quieres guardarlo de nuevo?`, yesLabel: 'Guardar igual', noLabel: 'Cancelar', onYes: () => { setConfirm(null); agregarGasto(true) } })
         return
       }
     }
+
     _commitGasto(gasto)
-    setGasto({concepto:'',monto:'',moneda:'BS',categoria:'insumos'})
-    go('home'); showToast('¡Listo! Gasto anotado correctamente.', 3000)
+    // Limpiar formulario
+    setGasto({ concepto: '', monto: '', moneda: 'BS', categoria: 'insumos' })
+    // Ir a la lista de gastos para que vea el nuevo item
+    go('gastos')
+    showToast('¡Listo! Gasto anotado correctamente.', 3000)
   }
 
   function commitPendGastos() {
+    const fecha = getVzlaDate()
     let d = data
     const toInsert = []
     for (const g of pendGastos) {
-      const entry = {...g, concepto: capitalizar(g.concepto), id:Date.now()+Math.random()}
-      d = {...d, gastos:[...d.gastos, entry]}
+      const concepto = capitalizar(g.concepto)
+      const montoUSD = redondear(n(g.monto))
+      if (montoUSD <= 0) continue
+      const entry = { ...g, concepto, monto: montoUSD, id: Date.now() + Math.random() }
+      d = { ...d, gastos: [entry, ...d.gastos] }
       toInsert.push({
-        fecha: data.fecha,
-        concepto: entry.concepto,
-        monto: parseFloat(entry.monto) || 0,
+        fecha,
+        concepto,
+        monto: montoUSD,
         moneda: 'USD',
         categoria: entry.categoria || 'Insumos',
         notas: entry.bsOrig ? `Bs ${entry.bsOrig}` : null,
       })
     }
     setData(d); guardarData(d)
-    // Sync all to Supabase
     Promise.all(toInsert.map(g => insertGasto(g))).then(rows => {
       const valid = rows.filter(Boolean)
       if (valid.length) setDbGastos(prev => [...valid, ...prev])
     })
-    setPendGastos([]); go('home')
-    showToast('¡Listo! Todo anotado correctamente.', 3000)
+    setPendGastos([]); go('gastos')
+    showToast(`¡Listo! ${toInsert.length} gasto${toInsert.length > 1 ? 's' : ''} anotado${toInsert.length > 1 ? 's' : ''}.`, 3000)
   }
 
   function eliminarGasto(g) {
