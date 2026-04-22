@@ -718,6 +718,7 @@ export default function App() {
   const [showTrash,  setShowTrash]  = useState(false)
   const [saving,     setSaving]     = useState(false)
   const [savingMsg,  setSavingMsg]  = useState('')
+  const [ingDirty,   setIngDirty]   = useState(false)
 
   const fileRef        = useRef(null)
   const gastoFileRef   = useRef(null)
@@ -854,6 +855,7 @@ export default function App() {
   function setIngreso(campo, valor) {
     const nueva = {...data, ingresos:{...data.ingresos,[campo]:valor}}
     setData(nueva); guardarData(nueva)
+    setIngDirty(true)
   }
 
   function _commitGasto(g) {
@@ -1002,13 +1004,68 @@ export default function App() {
         setDbGastos(g); setDbIngresos(i)
       }
 
-      clearInterval(msgInterval); setSaving(false)
+      clearInterval(msgInterval); setSaving(false); setIngDirty(false)
       setConfetti(true); setTimeout(() => setConfetti(false), 3500)
       showToast(`¡Caja cerrada! ${rows.length} ingresos guardados`)
     } catch {
       clearInterval(msgInterval); setSaving(false)
       showToast('¡Ups! No pudimos guardar el cierre. Revisa tu conexion e intenta de nuevo.', 5000)
     }
+  }
+
+  async function guardarIngresosManual() {
+    const fecha = fechaCierre || hoy()
+    const ingresos = data.ingresos
+    const camposMap = [
+      { key: 'bicentenario', concepto: 'Bicentenario', cat: 'Bancos', mon: 'BS' },
+      { key: 'bancaribe', concepto: 'Bancaribe', cat: 'Bancos', mon: 'BS' },
+      { key: 'banesco', concepto: 'Banesco', cat: 'Bancos', mon: 'BS' },
+      { key: 'bancamiga', concepto: 'Bancamiga', cat: 'Bancos', mon: 'BS' },
+      { key: 'pagos_dia', concepto: 'Pagomovil', cat: 'Pagos Del Dia', mon: 'BS' },
+      { key: 'efectivo_bs', concepto: 'Efectivo Bolivares', cat: 'Efectivo', mon: 'BS' },
+      { key: 'delivery', concepto: 'Delivery', cat: 'Delivery', mon: 'BS' },
+      { key: 'pedidosya_usd', concepto: 'Pedidos Ya Prepago', cat: 'Delivery', mon: 'USD' },
+      { key: 'pedidosya_bs', concepto: 'Pedidos Ya Efectivo', cat: 'Delivery', mon: 'BS' },
+      { key: 'divisas_usd', concepto: 'Divisas', cat: 'Efectivo', mon: 'USD' },
+      { key: 'cuentas_cobrar', concepto: 'Cuentas Por Cobrar', cat: 'Por Cobrar', mon: 'USD' },
+    ]
+    const rows = camposMap
+      .filter(c => parseFloat(ingresos[c.key]) > 0)
+      .map(c => ({ fecha, concepto: c.concepto, monto: parseFloat(ingresos[c.key]), moneda: c.mon, categoria: c.cat, notas: `Cierre ${fecha}` }))
+
+    if (rows.length === 0) {
+      showToast('No hay ingresos para guardar. Llena al menos un campo.', 3500)
+      return
+    }
+
+    setSaving(true); setSavingMsg(SAVING_MSGS[0])
+    const mi = setInterval(() => setSavingMsg(p => SAVING_MSGS[(SAVING_MSGS.indexOf(p)+1)%SAVING_MSGS.length]), 1500)
+    try {
+      if (supabase) {
+        await deleteIngresosByFecha(fecha)
+        await Promise.all(rows.map(r => insertIngreso(r)))
+        const [g, i] = await Promise.all([fetchGastos(), fetchIngresos()])
+        setDbGastos(g); setDbIngresos(i)
+      }
+      clearInterval(mi); setSaving(false); setIngDirty(false)
+      showToast(`¡Guardado! ${rows.length} ingresos del ${fDate(fecha)}`, 3000)
+      go('cierre')
+    } catch {
+      clearInterval(mi); setSaving(false)
+      showToast('¡Ups! No pudimos guardar. Revisa tu conexion.', 5000)
+    }
+  }
+
+  function intentarSalirIngresos() {
+    if (!ingDirty) { go('cierre'); return }
+    setConfirm({
+      title: '¿Salir sin guardar?',
+      msg: '¿Deseas salir sin guardar los cambios realizados?',
+      yesLabel: 'Salir sin guardar',
+      noLabel: 'Seguir editando',
+      yesColor: T.rose,
+      onYes: () => { setConfirm(null); setIngDirty(false); go('cierre') },
+    })
   }
 
   function reabrirCaja() {
@@ -1035,6 +1092,7 @@ export default function App() {
     const nueva = { ...data, fecha, ingresos: campos, cerrada: false }
     setData(nueva); guardarData(nueva)
     setFechaCierre(fecha)
+    setIngDirty(false)
     setHistItem(null)
     go('ingresos')
     showToast(`Editando cierre del ${fDate(fecha)}`, 3000)
@@ -1876,11 +1934,12 @@ export default function App() {
       <CampoMonto label={label} value={ing[campo]} onChange={v=>setIngreso(campo,v)} moneda={moneda} icon={Icon} micActive={mic(campo)} onMic={()=>iniciarVozSimple(`ing:${campo}`)} dimmed={dimmed}/>
     )
     return (
-      <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 40px',overflowY:'auto'}}>
-        <InnerHeader title="Ingresos del día" onBack={()=>go('home')}/>
-        <div style={{display:'flex',justifyContent:'flex-end',marginBottom:18,marginTop:-10}}>
+      <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 120px',overflowY:'auto'}}>
+        <InnerHeader title={`Ingresos — ${fDate(fechaCierre)}`} onBack={intentarSalirIngresos}/>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18,marginTop:-10}}>
+          <p style={{fontSize:12,color:T.muted}}>Tasa Bs {data.tasa}</p>
           <div style={{textAlign:'right'}}>
-            <p style={{fontSize:10,color:T.muted,fontWeight:700,letterSpacing:'.08em'}}>TOTAL HOY</p>
+            <p style={{fontSize:10,color:T.muted,fontWeight:700,letterSpacing:'.08em'}}>TOTAL</p>
             <p style={{fontSize:20,fontWeight:900,color:T.forest,letterSpacing:'-.02em'}}>{fUSD(tUSD)}</p>
           </div>
         </div>
@@ -1928,7 +1987,16 @@ export default function App() {
         <Card style={{marginBottom:8}}>
           {row('cuentas_cobrar','Por cobrar — no suma',AlertCircle,'USD',true)}
         </Card>
-        <p style={{fontSize:12,color:T.muted,marginBottom:32,paddingLeft:4,lineHeight:1.5}}>Registrado pero no incluido en el total del día.</p>
+        <p style={{fontSize:12,color:T.muted,marginBottom:20,paddingLeft:4,lineHeight:1.5}}>Registrado pero no incluido en el total del dia.</p>
+
+        {/* Boton fijo de guardar */}
+        <div style={{position:'fixed',bottom:0,left:0,right:0,padding:'16px 20px',background:T.bg,borderTop:`1px solid ${T.border}`,zIndex:150}}>
+          <Btn onClick={guardarIngresosManual} bg={T.forest} full icon={CheckCircle} style={{padding:'16px',fontSize:16}}>
+            ¡Guardar cambios!
+          </Btn>
+        </div>
+        <Confirm title={confirm?.title} msg={confirm?.msg} onYes={confirm?.onYes} onNo={()=>setConfirm(null)} yesLabel={confirm?.yesLabel} noLabel={confirm?.noLabel} yesColor={confirm?.yesColor}>{confirm?.body}</Confirm>
+        <SavingOverlay active={saving} msg={savingMsg}/>
       </div>
     )
   }
