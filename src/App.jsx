@@ -650,6 +650,25 @@ function BottomNav({ pantalla, go }) {
 }
 
 // ─── Header de pantalla interior ──────────────────────────────────────────────
+const SAVING_MSGS = [
+  'Guardando ingresos en la base de datos...',
+  'Sincronizando con el historial...',
+  '¡Casi listo, Cashipop esta brillando!',
+]
+
+function SavingOverlay({ active, msg }) {
+  if (!active) return null
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(94,64,91,0.85)',zIndex:9999,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:24}}>
+      <div style={{width:56,height:56,borderRadius:16,background:'rgba(255,255,255,0.15)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <RefreshCw size={28} color='#FFB752' strokeWidth={1.75} style={{animation:'spin 1s linear infinite'}}/>
+      </div>
+      <p style={{fontSize:17,fontWeight:700,color:'#fff',textAlign:'center',padding:'0 40px',lineHeight:1.5}}>{msg}</p>
+      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+    </div>
+  )
+}
+
 function InnerHeader({ title, onBack }) {
   return (
     <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:28}}>
@@ -697,6 +716,8 @@ export default function App() {
   const [trashGastos, setTrashGastos] = useState([])
   const [trashIngresos, setTrashIngresos] = useState([])
   const [showTrash,  setShowTrash]  = useState(false)
+  const [saving,     setSaving]     = useState(false)
+  const [savingMsg,  setSavingMsg]  = useState('')
 
   const fileRef        = useRef(null)
   const gastoFileRef   = useRef(null)
@@ -825,7 +846,7 @@ export default function App() {
   // ── Helpers de estado ────────────────────────────────────────────────────────
   function confirmarTasa() {
     const t = parseFloat(tasaTemp.replace(',','.'))
-    if (!t||t<50||t>5000) { showToast('Tasa invalida'); return }
+    if (!t||t<50||t>5000) { showToast('¡Tasa invalida!'); return }
     applyTasa(t)
     go('home')
   }
@@ -858,13 +879,13 @@ export default function App() {
     if (!forzar) {
       const dup = data.gastos.find(g=>g.concepto.toLowerCase()===c.toLowerCase()&&g.monto===gasto.monto&&g.moneda===gasto.moneda)
       if (dup) {
-        setConfirm({title:'Gasto duplicado',msg:`"${c}" ya esta anotado hoy. Quieres guardarlo de nuevo?`,yesLabel:'Guardar igual',noLabel:'Cancelar',onYes:()=>{setConfirm(null);agregarGasto(true)}})
+        setConfirm({title:'¿Gasto duplicado?',msg:`"${c}" ya esta anotado hoy. ¿Quieres guardarlo de nuevo?`,yesLabel:'Guardar igual',noLabel:'Cancelar',onYes:()=>{setConfirm(null);agregarGasto(true)}})
         return
       }
     }
     _commitGasto(gasto)
     setGasto({concepto:'',monto:'',moneda:'BS',categoria:'insumos'})
-    go('home'); showToast('Listo! Gasto anotado correctamente.', 3000)
+    go('home'); showToast('¡Listo! Gasto anotado correctamente.', 3000)
   }
 
   function commitPendGastos() {
@@ -889,17 +910,17 @@ export default function App() {
       if (valid.length) setDbGastos(prev => [...valid, ...prev])
     })
     setPendGastos([]); go('home')
-    showToast('Listo! Todo anotado correctamente.', 3000)
+    showToast('¡Listo! Todo anotado correctamente.', 3000)
   }
 
   function eliminarGasto(g) {
     setConfirm({
-      title: 'Borrar este gasto?',
+      title: '¿Borrar este gasto?',
       msg: null,
       body: <p style={{fontSize:15,color:T.sub,textAlign:'center',lineHeight:1.6}}>
-        Quieres quitar <strong style={{color:T.navy}}>{g.concepto}</strong> por <strong style={{color:T.rose}}>{g.moneda==='USD'?fUSD(g.monto):fBS(g.monto)}</strong>?
+        ¿Quieres quitar <strong style={{color:T.navy}}>{g.concepto}</strong> por <strong style={{color:T.rose}}>{g.moneda==='USD'?fUSD(g.monto):fBS(g.monto)}</strong>?
       </p>,
-      yesLabel: 'Si, borrarlo',
+      yesLabel: 'Mandar a la papelera',
       noLabel: 'No, dejarlo',
       yesColor: T.rose,
       onYes: () => {
@@ -950,38 +971,50 @@ export default function App() {
       return
     }
 
-    // Guardar local
-    const nueva = { ...data, fecha, cerrada: true }
-    setData(nueva); guardarData(nueva)
-    archivarData(nueva); setHistorial(cargarHistorial())
+    // Mostrar overlay de guardado
+    setSaving(true); setSavingMsg(SAVING_MSGS[0])
+    const msgInterval = setInterval(() => {
+      setSavingMsg(prev => {
+        const idx = SAVING_MSGS.indexOf(prev)
+        return SAVING_MSGS[(idx + 1) % SAVING_MSGS.length]
+      })
+    }, 1500)
 
-    // Guardar en Supabase: delete + insert (upsert)
-    if (supabase) {
-      console.log(`Cerrando caja ${fecha}: ${rows.length} ingresos a guardar`)
-      await deleteIngresosByFecha(fecha)
-      const results = await Promise.all(rows.map(r => insertIngreso(r)))
-      const saved = results.filter(Boolean).length
-      console.log(`Supabase: ${saved}/${rows.length} ingresos guardados`)
+    try {
+      // Guardar local
+      const nueva = { ...data, fecha, cerrada: true }
+      setData(nueva); guardarData(nueva)
+      archivarData(nueva); setHistorial(cargarHistorial())
 
-      if (saved === 0) {
-        showToast('Error guardando en la base de datos. Intenta de nuevo.', 4000)
-        return
+      // Guardar en Supabase
+      if (supabase) {
+        await deleteIngresosByFecha(fecha)
+        const results = await Promise.all(rows.map(r => insertIngreso(r)))
+        const saved = results.filter(Boolean).length
+
+        if (saved === 0) {
+          clearInterval(msgInterval); setSaving(false)
+          showToast('¡Ups! No pudimos guardar el cierre. Revisa tu conexion e intenta de nuevo.', 5000)
+          return
+        }
+
+        const [g, i] = await Promise.all([fetchGastos(), fetchIngresos()])
+        setDbGastos(g); setDbIngresos(i)
       }
 
-      // Refresh completo
-      const [g, i] = await Promise.all([fetchGastos(), fetchIngresos()])
-      setDbGastos(g); setDbIngresos(i)
-      console.log(`Post-cierre: ${i.length} ingresos, ${g.length} gastos en DB`)
+      clearInterval(msgInterval); setSaving(false)
+      setConfetti(true); setTimeout(() => setConfetti(false), 3500)
+      showToast(`¡Caja cerrada! ${rows.length} ingresos guardados`)
+    } catch {
+      clearInterval(msgInterval); setSaving(false)
+      showToast('¡Ups! No pudimos guardar el cierre. Revisa tu conexion e intenta de nuevo.', 5000)
     }
-
-    setConfetti(true); setTimeout(() => setConfetti(false), 3500)
-    showToast(`Caja cerrada: ${rows.length} ingresos guardados`)
   }
 
   function reabrirCaja() {
     const nueva = { ...data, cerrada: false }
     setData(nueva); guardarData(nueva)
-    showToast('No pasa nada, Arcelia. Corrijamos los numeros juntos.', 3500)
+    showToast('¡No pasa nada, Arcelia! Corrijamos los numeros juntos.', 3500)
   }
 
   // Cargar cierre de un dia pasado para editar
@@ -1009,11 +1042,11 @@ export default function App() {
 
   async function borrarCierreHistorico(fecha) {
     setConfirm({
-      title: 'Borrar cierre?',
+      title: '¿Borrar cierre del dia?',
       body: <p style={{fontSize:15,color:T.sub,textAlign:'center',lineHeight:1.6}}>
-        Estas segura de borrar el cierre del <strong style={{color:T.navy}}>{fDate(fecha)}</strong>? Los ingresos iran a la papelera por 15 dias. Los gastos NO se tocan.
+        ¿Estas segura de borrar el cierre del <strong style={{color:T.navy}}>{fDate(fecha)}</strong>? Los ingresos iran a la papelera por 15 dias. Los gastos NO se tocan.
       </p>,
-      yesLabel: 'Si, a la papelera',
+      yesLabel: 'Mandar a la papelera',
       noLabel: 'No, dejarlo',
       yesColor: T.rose,
       onYes: async () => {
@@ -1150,17 +1183,23 @@ export default function App() {
       setData(nueva); guardarData(nueva)
       archivarData(nueva); setHistorial(cargarHistorial())
 
-      if (supabase) {
-        await deleteIngresosByFecha(fecha)
-        const results = await Promise.all(rows.map(r => insertIngreso(r)))
-        console.log(`OCR cierre: ${results.filter(Boolean).length}/${rows.length} guardados`)
-        const [g, i] = await Promise.all([fetchGastos(), fetchIngresos()])
-        setDbGastos(g); setDbIngresos(i)
+      setSaving(true); setSavingMsg(SAVING_MSGS[0])
+      const mi = setInterval(() => setSavingMsg(p => SAVING_MSGS[(SAVING_MSGS.indexOf(p)+1)%SAVING_MSGS.length]), 1500)
+      try {
+        if (supabase) {
+          await deleteIngresosByFecha(fecha)
+          const results = await Promise.all(rows.map(r => insertIngreso(r)))
+          const [g, i] = await Promise.all([fetchGastos(), fetchIngresos()])
+          setDbGastos(g); setDbIngresos(i)
+        }
+        clearInterval(mi); setSaving(false)
+        go('cierre')
+        setConfetti(true); setTimeout(() => setConfetti(false), 3500)
+        showToast(`¡Cierre aplicado! ${rows.length} ingresos guardados`)
+      } catch {
+        clearInterval(mi); setSaving(false)
+        showToast('¡Ups! No pudimos guardar el cierre. Revisa tu conexion.', 5000)
       }
-
-      go('cierre')
-      setConfetti(true); setTimeout(() => setConfetti(false), 3500)
-      showToast(`Cierre aplicado: ${rows.length} ingresos guardados`)
     } else {
       go('ingresos')
       showToast('Valores cargados en el formulario')
@@ -1698,9 +1737,9 @@ export default function App() {
   function deletePendGasto(idx) {
     const g = pendGastos[idx]
     setConfirm({
-      title: 'Borrar este gasto?',
+      title: '¿Borrar este gasto?',
       body: <p style={{fontSize:15,color:T.sub,textAlign:'center',lineHeight:1.6}}>
-        Quieres quitar <strong style={{color:T.brand}}>{g.concepto}</strong> por <strong style={{color:T.rose}}>{fUSD(g.monto)}</strong>?
+        ¿Quieres quitar <strong style={{color:T.brand}}>{g.concepto}</strong> por <strong style={{color:T.rose}}>{fUSD(g.monto)}</strong>?
       </p>,
       yesLabel: 'Si, borrarlo',
       noLabel: 'No, dejarlo',
@@ -2113,7 +2152,7 @@ export default function App() {
       </Btn>
 
       <BottomNav pantalla={pantalla} go={go}/>
-      <Confetti active={confetti}/><Toast msg={toast}/>
+      <Confetti active={confetti}/><Toast msg={toast}/><SavingOverlay active={saving} msg={savingMsg}/>
     </div>
   )
 
@@ -2357,7 +2396,7 @@ export default function App() {
                 fontSize:13,fontWeight:600,color:T.muted,cursor:'pointer',textAlign:'center',
                 WebkitTapHighlightColor:'transparent',
               }}>
-                Te equivocaste? Reabrir caja de hoy
+                ¿Te equivocaste? Reabrir caja de hoy
               </button>
             )}
             {!esHoy && (
@@ -2373,7 +2412,7 @@ export default function App() {
         )}
 
         <BottomNav pantalla={pantalla} go={go}/>
-        <Confetti active={confetti}/><Toast msg={toast}/>
+        <Confetti active={confetti}/><Toast msg={toast}/><SavingOverlay active={saving} msg={savingMsg}/>
       </div>
     )
   }
