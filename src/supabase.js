@@ -64,7 +64,7 @@ export async function fetchGastosTrash() {
 export async function insertGasto(gasto) {
   if (!supabase) return null
   const row = {
-    fecha: gasto.fecha || new Date().toISOString().slice(0, 10),
+    fecha: gasto.fecha || (() => { const n = new Date(); return new Date(n.getTime() - 4*3600000).toISOString().split('T')[0] })(),
     concepto: gasto.concepto,
     monto: parseFloat(gasto.monto) || 0,
     moneda: gasto.moneda === 'BS' ? 'BS' : 'USD',
@@ -164,7 +164,7 @@ export async function restoreIngreso(id) {
 export async function insertIngreso(ingreso) {
   if (!supabase) return null
   const row = {
-    fecha: ingreso.fecha || new Date().toISOString().slice(0, 10),
+    fecha: ingreso.fecha || (() => { const n = new Date(); return new Date(n.getTime() - 4*3600000).toISOString().split('T')[0] })(),
     concepto: ingreso.concepto,
     monto: parseFloat(ingreso.monto) || 0,
     moneda: ingreso.moneda || 'USD',

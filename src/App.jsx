@@ -38,7 +38,13 @@ const T = {
 // ─── Storage ──────────────────────────────────────────────────────────────────
 const KEY      = 'CASHIPOP_V4'
 const HIST_KEY = 'CASHIPOP_HIST'
-const hoy = () => new Date().toISOString().slice(0, 10)
+// Fecha de Venezuela (UTC-4) — nunca usar toISOString() que es UTC
+function getVzlaDate() {
+  const now = new Date()
+  const vzla = new Date(now.getTime() - (4 * 60 * 60 * 1000))
+  return vzla.toISOString().split('T')[0]
+}
+const hoy = getVzlaDate
 
 function cargarData() {
   try {
@@ -188,6 +194,11 @@ function formatConcept(str) {
   return words.join(' ') || 'Varios'
 }
 const capitalizar = formatConcept
+
+function toVzlaDateStr(d) {
+  const vzla = new Date(d.getTime() - (4 * 60 * 60 * 1000))
+  return vzla.toISOString().split('T')[0]
+}
 
 function redondear(v) {
   return Math.round((parseFloat(v) || 0) * 100) / 100
@@ -2528,14 +2539,14 @@ export default function App() {
     // ── Semana actual: lunes a hoy ──
     const ahora = new Date()
     const lunes = new Date(ahora); lunes.setDate(ahora.getDate() - ((ahora.getDay() + 6) % 7))
-    const lunesStr = lunes.toISOString().slice(0, 10)
+    const lunesStr = toVzlaDateStr(lunes)
     const ingSemana = redondear(dbIngresos.filter(i => i.fecha >= lunesStr && i.fecha <= hoyStr).reduce((a, i) => a + toUSD(i.monto, i.moneda, tasa), 0))
     const gasSemana = redondear(dbGastos.filter(g => g.fecha >= lunesStr && g.fecha <= hoyStr).reduce((a, g) => a + toUSD(g.monto, g.moneda, tasa), 0))
     const netoSemana = redondear(ingSemana - gasSemana)
 
     // ── Dias pendientes ──
     const diasSemana = []
-    for (let d = new Date(lunes); d <= ahora; d.setDate(d.getDate() + 1)) diasSemana.push(d.toISOString().slice(0, 10))
+    for (let d = new Date(lunes); d <= ahora; d.setDate(d.getDate() + 1)) diasSemana.push(toVzlaDateStr(d))
     const diasConCierre = new Set(dbIngresos.map(i => i.fecha))
     const diasPendientes = diasSemana.filter(d => !diasConCierre.has(d) && d !== hoyStr)
     const diasNombre = ['Dom','Lun','Mar','Mie','Jue','Vie','Sab']
@@ -2577,7 +2588,7 @@ export default function App() {
     // Semana anterior para comparacion
     const lunesAnt = new Date(lunes); lunesAnt.setDate(lunesAnt.getDate() - 7)
     const domAnt = new Date(lunes); domAnt.setDate(domAnt.getDate() - 1)
-    const gasSemanaAnt = redondear(dbGastos.filter(g => g.fecha >= lunesAnt.toISOString().slice(0,10) && g.fecha <= domAnt.toISOString().slice(0,10)).reduce((a, g) => a + toUSD(g.monto, g.moneda, tasa), 0))
+    const gasSemanaAnt = redondear(dbGastos.filter(g => g.fecha >= toVzlaDateStr(lunesAnt) && g.fecha <= toVzlaDateStr(domAnt)).reduce((a, g) => a + toUSD(g.monto, g.moneda, tasa), 0))
     const cambioSemanal = gasSemanaAnt > 0 ? Math.round((gasSemana - gasSemanaAnt) / gasSemanaAnt * 100) : 0
 
     const insights = []
