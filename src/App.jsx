@@ -787,35 +787,35 @@ export default function App() {
   }, [])
 
   // ── Tasa: manual-first, siempre editable ──
-  function applyTasa(t) {
+  // applyTasa guarda el valor numerico SIN tocar tasaTemp (para no borrar el punto mientras se escribe)
+  function applyTasa(t, updateDisplay) {
     const val = Math.round(t * 100) / 100
-    setTasaTemp(String(val))
+    if (updateDisplay) setTasaTemp(String(val))
     localStorage.setItem('CP_TASA', JSON.stringify({ v: val, ts: Date.now() }))
     if (data) { const nueva = { ...data, tasa: val }; setData(nueva); guardarData(nueva) }
   }
 
-  function getTasaTs() {
-    try { const r = JSON.parse(localStorage.getItem('CP_TASA')); return r?.ts || 0 } catch { return 0 }
-  }
-  const tasaStale = (Date.now() - getTasaTs()) > 4 * 60 * 60 * 1000
-
   function onTasaInput(val) {
-    const clean = normMonto(val)
-    setTasaTemp(clean)
+    const clean = val.replace(/[^0-9.,]/g, '').replace(',', '.')
+    setTasaTemp(clean) // Mantener exactamente lo que el usuario escribe
     const num = parseFloat(clean)
-    if (num >= 10 && num <= 9999) applyTasa(num)
+    if (num >= 10 && num <= 9999) {
+      // Guardar en state/localStorage pero NO sobreescribir el input
+      localStorage.setItem('CP_TASA', JSON.stringify({ v: Math.round(num*100)/100, ts: Date.now() }))
+      if (data) { const nueva = { ...data, tasa: Math.round(num*100)/100 }; setData(nueva); guardarData(nueva) }
+    }
   }
 
   function onTasaBlur() {
     const num = parseFloat(tasaTemp.replace(',', '.'))
-    if (num >= 10 && num <= 9999) applyTasa(num)
+    if (num >= 10 && num <= 9999) applyTasa(num, true)
   }
 
   // ── Helpers de estado ────────────────────────────────────────────────────────
   function confirmarTasa() {
     const t = parseFloat(tasaTemp.replace(',','.'))
-    if (!t||t<50||t>5000) { showToast('¡Tasa invalida!'); return }
-    applyTasa(t)
+    if (!t||t<50||t>5000) { showToast('¡Tasa inválida!'); return }
+    applyTasa(t, true)
     go('home')
   }
 
@@ -1694,7 +1694,7 @@ export default function App() {
         </div>
         <div style={{position:'relative'}}>
           <span style={{position:'absolute',left:16,top:'50%',transform:'translateY(-50%)',fontSize:22,fontWeight:700,color:T.sub}}>Bs</span>
-          <input type="text" inputMode="decimal" value={tasaTemp} onChange={e=>{const v=normMonto(e.target.value);setTasaTemp(v);const num=parseFloat(v);if(num>=10&&num<=9999)applyTasa(num)}}
+          <input type="text" inputMode="decimal" value={tasaTemp} onChange={e=>onTasaInput(e.target.value)} onBlur={onTasaBlur}
             style={{width:'100%',paddingLeft:54,paddingRight:16,height:74,fontSize:34,fontWeight:900,textAlign:'right',border:`2px solid ${T.cobalt}`,borderRadius:18,background:T.cobaltLight,color:T.navy,outline:'none',letterSpacing:'-.02em'}}/>
         </div>
         <p style={{fontSize:12,color:T.muted,textAlign:'center',marginTop:10,lineHeight:1.5}}>Cambia si la tasa de la calle es diferente</p>
