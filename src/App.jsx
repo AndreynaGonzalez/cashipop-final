@@ -95,27 +95,7 @@ function dataVacia(tasa = 481.21) {
 }
 
 // ─── BCV ─────────────────────────────────────────────────────────────────────
-async function fetchTasaBCV() {
-  // Fuente 1: dolarapi.com (espejo confiable del BCV)
-  try {
-    const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', { signal: AbortSignal.timeout(2000) })
-    const json = await res.json()
-    const v = parseFloat(json.promedio)
-    if (v > 10 && v < 9999) return Math.round(v * 100) / 100
-  } catch {}
-
-  // Fuente 2: proxy directo al BCV (fallback)
-  try {
-    const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://www.bcv.org.ve/glosario/cambio-oficial'), { signal: AbortSignal.timeout(2000) })
-    const html = await res.text()
-    for (const m of html.matchAll(/(\d{3,})[,.](\d{2})\b/g)) {
-      const v = parseFloat(`${m[1]}.${m[2]}`)
-      if (v > 100 && v < 2000) return Math.round(v * 100) / 100
-    }
-  } catch {}
-
-  return null
-}
+// fetchTasaBCV eliminado — tasa es 100% manual con link a Instagram BCV
 
 // ─── OCR con Gemini via OpenRouter ────────────────────────────────────────────
 const OCR_SYSTEM = `Eres un lector de libretas de cierre de caja para Cashipop.
@@ -710,7 +690,7 @@ export default function App() {
   const [data,       setData]       = useState(null)
   const [confetti,   setConfetti]   = useState(false)
   const [toast,      setToast]      = useState('')
-  // bcvLoad removed — replaced by tasaBuscando
+  // bcvLoad/tasaBuscando removed — tasa is manual-first
   const [tasaTemp,   setTasaTemp]   = useState('481.21')
   const [progOCR,    setProgOCR]    = useState(0)
   const [ocrRes,     setOcrRes]     = useState(null)
@@ -725,8 +705,7 @@ export default function App() {
   const [transcriptFinal, setTranscriptFinal] = useState('')
   const [editingIdx, setEditingIdx] = useState(null)
   const [fechaCierre, setFechaCierre] = useState(hoy())
-  const [tasaBuscando, setTasaBuscando] = useState(false)
-  const [tasaFailed,   setTasaFailed]   = useState(false)
+  // tasaBuscando/tasaFailed removed — manual-first approach
   const [dbGastos,   setDbGastos]   = useState([])
   const [dbIngresos, setDbIngresos] = useState([])
   const [dbLoaded,   setDbLoaded]   = useState(false)
@@ -773,8 +752,7 @@ export default function App() {
   useEffect(() => {
     setHistorial(cargarHistorial())
     const stored = cargarData()
-    const tc = (() => { try { const r = JSON.parse(localStorage.getItem('CP_TASA')); return typeof r === 'number' ? r : r?.valor || 481.21 } catch { return 481.21 } })()
-    const tasaCache = tc
+    const tasaCache = (() => { try { const raw = localStorage.getItem('CP_TASA'); if (!raw) return 481.21; const r = JSON.parse(raw); return typeof r === 'number' ? r : (r?.v || r?.valor || 481.21) } catch { return parseFloat(localStorage.getItem('CP_TASA')) || 481.21 } })()
 
     if (stored) {
       if (stored.fecha !== hoy()) {
@@ -795,19 +773,22 @@ export default function App() {
     setPantalla('home')
   }, [])
 
-  const bcvAbort = useRef(null)
-
-  // ── Tasa: simple, siempre editable, nunca se bloquea ──
+  // ── Tasa: manual-first, siempre editable ──
   function applyTasa(t) {
     const val = Math.round(t * 100) / 100
     setTasaTemp(String(val))
-    localStorage.setItem('CP_TASA', String(val))
+    localStorage.setItem('CP_TASA', JSON.stringify({ v: val, ts: Date.now() }))
     if (data) { const nueva = { ...data, tasa: val }; setData(nueva); guardarData(nueva) }
   }
 
+  function getTasaTs() {
+    try { const r = JSON.parse(localStorage.getItem('CP_TASA')); return r?.ts || 0 } catch { return 0 }
+  }
+  const tasaStale = (Date.now() - getTasaTs()) > 4 * 60 * 60 * 1000
+
   function onTasaInput(val) {
     const clean = val.replace(/[^0-9.,]/g, '')
-    setTasaTemp(clean); setTasaFailed(false)
+    setTasaTemp(clean)
     const num = parseFloat(clean.replace(',', '.'))
     if (num >= 10 && num <= 9999) applyTasa(num)
   }
@@ -815,29 +796,6 @@ export default function App() {
   function onTasaBlur() {
     const num = parseFloat(tasaTemp.replace(',', '.'))
     if (num >= 10 && num <= 9999) applyTasa(num)
-  }
-
-  function buscarTasaBCV() {
-    if (bcvAbort.current) bcvAbort.current.abort()
-    const ctrl = new AbortController()
-    bcvAbort.current = ctrl
-    setTasaBuscando(true); setTasaFailed(false)
-
-    const timeout = setTimeout(() => {
-      ctrl.abort(); setTasaBuscando(false); setTasaFailed(true)
-      showToast('BCV no disponible, ingresa manual', 2500)
-    }, 3000)
-
-    fetchTasaBCV().then(t => {
-      clearTimeout(timeout)
-      if (ctrl.signal.aborted) return
-      setTasaBuscando(false)
-      if (t) { applyTasa(t); setTasaFailed(false); showToast(`¡Tasa: Bs ${t}!`) }
-      else { setTasaFailed(true); showToast('BCV no disponible, ingresa manual', 2500) }
-    }).catch(() => {
-      clearTimeout(timeout)
-      if (!ctrl.signal.aborted) { setTasaBuscando(false); setTasaFailed(true); showToast('BCV no disponible, ingresa manual', 2500) }
-    })
   }
 
   // ── Helpers de estado ────────────────────────────────────────────────────────
@@ -1605,15 +1563,15 @@ export default function App() {
           <DollarSign size={32} color={T.cobalt} strokeWidth={1.75}/>
         </div>
         <h1 style={{fontSize:27,fontWeight:800,color:T.navy,letterSpacing:'-.03em'}}>Dólar BCV hoy</h1>
-        <p style={{fontSize:14,color:T.sub,marginTop:6}}>{tasaBuscando?'Consultando...':'¿Es correcto el valor?'}</p>
+        <p style={{fontSize:14,color:T.sub,marginTop:6}}>¿Es correcto el valor?</p>
       </div>
 
       <Card style={{width:'100%',maxWidth:380,padding:28}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
           <Label>TASA OFICIAL BCV</Label>
-          <button onClick={buscarTasaBCV} disabled={tasaBuscando} style={{background:'none',border:'none',color:T.cobalt,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600}}>
-            <RefreshCw size={13} strokeWidth={1.75} style={{animation:tasaBuscando?'spin 1s linear infinite':'none'}}/> Actualizar
-          </button>
+          <a href="https://www.instagram.com/bcv.org.ve/" target="_blank" rel="noopener noreferrer" style={{background:'none',border:'none',color:T.cobalt,cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontSize:13,fontWeight:600,textDecoration:'none'}}>
+            <ChevronRight size={13} strokeWidth={1.75}/> Ver tasa oficial
+          </a>
         </div>
         <div style={{position:'relative'}}>
           <span style={{position:'absolute',left:16,top:'50%',transform:'translateY(-50%)',fontSize:22,fontWeight:700,color:T.sub}}>Bs</span>
@@ -1678,7 +1636,7 @@ export default function App() {
 
     return (
       <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 100px',overflowY:'auto'}}>
-        <InnerHeader title="Validar cierre" onBack={()=>{setOcrRes(null);go('ingresos')}}/>
+        <InnerHeader title="Validar cierre" onBack={()=>{setOcrRes(null);go('cierre')}}/>
         <p style={{fontSize:14,color:T.sub,marginBottom:16}}>Revisa los valores que detecte en la libreta</p>
 
         {/* Alerta de fecha diferente */}
@@ -2144,22 +2102,25 @@ export default function App() {
         {/* Acciones terciarias: WA + Tasa */}
         <div style={{display:'flex',alignItems:'center',gap:8,marginTop:2}}>
           <WaBtn onClick={()=>enviarResumen()}/>
-          <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2}}>
-            <div style={{display:'flex',alignItems:'center',gap:4,background:tasaFailed?'#FFF0EB':T.amberLight,border:`1.5px solid ${tasaFailed?T.rose+'55':T.brandGold+'44'}`,borderRadius:14,padding:'5px 8px',transition:'all .2s'}}>
-              <Edit3 size={11} color={tasaFailed?T.rose:T.muted} strokeWidth={1.75}/>
-              <span style={{fontSize:11,fontWeight:700,color:tasaFailed?T.rose:T.brand}}>Bs</span>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3}}>
+            <div style={{display:'flex',alignItems:'center',gap:4,background:tasaStale?'#FFF7E8':T.amberLight,border:`1.5px solid ${tasaStale?T.brandGold:T.brandGold+'44'}`,borderRadius:14,padding:'5px 8px'}}>
+              <Edit3 size={11} color={tasaStale?T.brandGold:T.muted} strokeWidth={1.75}/>
+              <span style={{fontSize:11,fontWeight:700,color:T.brand}}>Bs</span>
               <input type="text" inputMode="decimal"
                 value={tasaTemp}
                 onChange={e => onTasaInput(e.target.value)}
                 onBlur={onTasaBlur}
                 onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                style={{width:72,height:30,fontSize:19,fontWeight:900,color:tasaFailed?T.rose:T.brand,background:'transparent',border:'none',padding:0,outline:'none',textAlign:'right'}}
+                style={{width:72,height:30,fontSize:19,fontWeight:900,color:tasaStale?T.brandGold:T.brand,background:'transparent',border:'none',padding:0,outline:'none',textAlign:'right'}}
               />
-              <button onClick={buscarTasaBCV} style={{width:26,height:26,borderRadius:7,border:'none',background:tasaBuscando?T.brandGold+'22':'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
-                <RefreshCw size={13} color={tasaFailed?T.rose:T.brand} strokeWidth={1.75} style={{animation:tasaBuscando?'spin 1s linear infinite':'none'}}/>
-              </button>
             </div>
-            {tasaFailed && <span style={{fontSize:9,color:T.rose,fontWeight:600}}>BCV no disponible</span>}
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              {tasaStale && <span style={{fontSize:9,color:T.brandGold,fontWeight:700}}>¿Es la tasa actual?</span>}
+              <a href="https://www.instagram.com/bcv.org.ve/" target="_blank" rel="noopener noreferrer" style={{fontSize:9,fontWeight:700,color:T.muted,textDecoration:'none',display:'flex',alignItems:'center',gap:3}}>
+                Ver oficial
+                <ChevronRight size={9} color={T.muted} strokeWidth={2}/>
+              </a>
+            </div>
           </div>
         </div>
       </div>
