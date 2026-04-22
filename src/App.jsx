@@ -1077,6 +1077,28 @@ export default function App() {
     }
   }, [])
 
+  function eliminarGastoDB(g) {
+    setConfirm({
+      title: '¿Mandar a la papelera?',
+      body: <p style={{fontSize:15,color:T.sub,textAlign:'center',lineHeight:1.6}}>
+        ¿Deseas mandar <strong style={{color:T.navy}}>{g.concepto}</strong> por <strong style={{color:T.rose}}>{fUSD(toUSD(g.monto, g.moneda, data.tasa))}</strong> a la papelera?
+      </p>,
+      yesLabel: 'Mandar a la papelera',
+      noLabel: 'No, dejarlo',
+      yesColor: T.rose,
+      onYes: async () => {
+        setConfirm(null)
+        addToLocalTrash({ ...g, _tipo: 'gasto' })
+        if (supabase && g.id) {
+          if (papeleraOk) await softDeleteGasto(g.id)
+          else await deleteGasto(g.id)
+        }
+        setDbGastos(prev => prev.filter(x => x.id !== g.id))
+        showToast('¡Enviado a la papelera!')
+      },
+    })
+  }
+
   function reabrirCaja() {
     const nueva = { ...data, cerrada: false }
     setData(nueva); guardarData(nueva)
@@ -2498,12 +2520,15 @@ export default function App() {
               {cierreGasDB.map((g, i) => (
                 <div key={g.id}>
                   {i > 0 && <Sep/>}
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <div>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+                    <div style={{flex:1,minWidth:0}}>
                       <p style={{fontSize:14,fontWeight:600,color:T.navy}}>{g.concepto}</p>
                       <p style={{fontSize:12,fontWeight:600,color:T.muted,marginTop:2}}>{g.categoria}</p>
                     </div>
-                    <p style={{fontSize:15,fontWeight:800,color:T.rose}}>{fUSD(toUSD(g.monto, g.moneda, data.tasa))}</p>
+                    <span style={{fontSize:15,fontWeight:800,color:T.rose,flexShrink:0}}>{fUSD(toUSD(g.monto, g.moneda, data.tasa))}</span>
+                    <button onClick={()=>eliminarGastoDB(g)} style={{background:T.roseLight,border:'none',borderRadius:9,width:30,height:30,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,WebkitTapHighlightColor:'transparent'}}>
+                      <Trash2 size={13} color={T.rose} strokeWidth={1.75}/>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -2550,6 +2575,7 @@ export default function App() {
 
         <BottomNav pantalla={pantalla} go={go}/>
         <Confetti active={confetti}/><Toast msg={toast}/><SavingOverlay active={saving} msg={savingMsg}/>
+        <Confirm title={confirm?.title} msg={confirm?.msg} onYes={confirm?.onYes} onNo={()=>setConfirm(null)} yesLabel={confirm?.yesLabel} noLabel={confirm?.noLabel} yesColor={confirm?.yesColor}>{confirm?.body}</Confirm>
       </div>
     )
   }
@@ -2882,12 +2908,15 @@ export default function App() {
                 {hi.gastos.map((g, i) => (
                   <div key={g.id || i}>
                     {i > 0 && <Sep/>}
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                      <div>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+                      <div style={{flex:1,minWidth:0}}>
                         <p style={{fontSize:14,fontWeight:600,color:T.navy}}>{g.concepto}</p>
                         {g.moneda === 'BS' && <p style={{fontSize:11,color:T.muted,marginTop:2}}>{fBS(g.monto)}</p>}
                       </div>
-                      <p style={{fontSize:14,fontWeight:800,color:T.rose}}>{fUSD(toUSD(g.monto, g.moneda, data.tasa))}</p>
+                      <span style={{fontSize:14,fontWeight:800,color:T.rose,flexShrink:0}}>{fUSD(toUSD(g.monto, g.moneda, data.tasa))}</span>
+                      <button onClick={()=>eliminarGastoDB(g)} style={{background:T.roseLight,border:'none',borderRadius:9,width:30,height:30,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,WebkitTapHighlightColor:'transparent'}}>
+                        <Trash2 size={13} color={T.rose} strokeWidth={1.75}/>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -2927,7 +2956,8 @@ export default function App() {
           {allTrash.length === 0 ? (
             <Card style={{textAlign:'center',padding:48,borderRadius:28}}>
               <Trash size={30} color={T.muted} strokeWidth={1.5} style={{margin:'0 auto'}}/>
-              <p style={{fontSize:15,fontWeight:700,color:T.navy,marginTop:14}}>Papelera vacia</p>
+              <p style={{fontSize:15,fontWeight:700,color:T.navy,marginTop:14}}>¡Tu papelera esta vacia!</p>
+              <p style={{fontSize:13,color:T.sub,marginTop:6}}>Los gastos borrados apareceran aqui por 15 dias</p>
             </Card>
           ) : allTrash.map(item => {
             const deletedDate = new Date(item.deleted_at)
