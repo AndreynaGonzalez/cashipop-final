@@ -2931,7 +2931,10 @@ export default function App() {
 
     // ── Papelera ──
     if (showTrash) {
-      const allTrash = [...trashGastos.map(g=>({...g,_tipo:'gasto'})), ...trashIngresos.map(i=>({...i,_tipo:'ingreso'})), ...localItems].sort((a,b)=>(b.deleted_at||'').localeCompare(a.deleted_at||''))
+      // Merge: Supabase trash + localStorage trash
+      const localItems = localTrash.map(t => ({ ...t, _fromLocal: true }))
+      const supaItems = [...trashGastos.map(g=>({...g,_tipo:'gasto'})), ...trashIngresos.map(i=>({...i,_tipo:'ingreso'}))]
+      const allTrash = [...supaItems, ...localItems].sort((a,b)=>(b.deleted_at||'').localeCompare(a.deleted_at||''))
 
       async function handleRestore(item) {
         if (item._fromLocal) {
@@ -2945,43 +2948,75 @@ export default function App() {
         showToast(ok ? '¡Registro restaurado con exito!' : '¡Error al restaurar!')
       }
 
-      // Merge Supabase trash + local trash
-      const localItems = localTrash.map(t => ({ ...t, _fromLocal: true }))
+      function vaciarPapelera() {
+        setConfirm({
+          title: '¿Vaciar papelera?',
+          msg: '¿Estas segura? Esta accion no se puede deshacer.',
+          yesLabel: 'Vaciar todo',
+          noLabel: 'Cancelar',
+          yesColor: T.rose,
+          onYes: async () => {
+            // Borrar local trash
+            setLocalTrash([]); localStorage.setItem('CP_TRASH', '[]')
+            // Borrar Supabase trash (hard delete)
+            for (const g of trashGastos) await deleteGasto(g.id)
+            for (const i of trashIngresos) await deleteGasto(i.id)
+            setTrashGastos([]); setTrashIngresos([])
+            setConfirm(null)
+            showToast('¡Papelera vaciada!')
+          },
+        })
+      }
 
       return (
         <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 96px',overflowY:'auto'}}>
           <InnerHeader title="Papelera" onBack={()=>setShowTrash(false)}/>
-          <p style={{fontSize:13,color:T.sub,marginBottom:20}}>Los registros se eliminan definitivamente despues de 15 dias</p>
+          <p style={{fontSize:13,color:T.sub,marginBottom:20}}>Los registros se eliminan automaticamente despues de 15 dias</p>
 
           {allTrash.length === 0 ? (
             <Card style={{textAlign:'center',padding:48,borderRadius:28}}>
-              <Trash size={30} color={T.muted} strokeWidth={1.5} style={{margin:'0 auto'}}/>
-              <p style={{fontSize:15,fontWeight:700,color:T.navy,marginTop:14}}>¡Tu papelera esta vacia!</p>
-              <p style={{fontSize:13,color:T.sub,marginTop:6}}>Los gastos borrados apareceran aqui por 15 dias</p>
+              <Trash size={36} color={T.muted} strokeWidth={1.25} style={{margin:'0 auto'}}/>
+              <p style={{fontSize:18,fontWeight:800,color:T.navy,marginTop:16}}>¡Tu papelera esta vacia!</p>
+              <p style={{fontSize:13,color:T.sub,marginTop:8,lineHeight:1.5}}>Los gastos borrados apareceran aqui por 15 dias</p>
+              <Btn onClick={()=>{setShowTrash(false);go('home')}} bg={T.brand} style={{marginTop:20,padding:'12px 24px',fontSize:13}} icon={Home}>
+                Ir al inicio
+              </Btn>
             </Card>
-          ) : allTrash.map(item => {
-            const deletedDate = new Date(item.deleted_at)
-            const purgeDate = new Date(deletedDate.getTime() + 15 * 24 * 60 * 60 * 1000)
-            const diasRestantes = Math.max(0, Math.ceil((purgeDate - Date.now()) / (24*60*60*1000)))
-            return (
-              <Card key={`${item._tipo}-${item.id}`} style={{marginBottom:10,padding:'14px 18px'}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
-                      <span style={{fontSize:10,fontWeight:700,color:item._tipo==='gasto'?T.rose:T.forest,background:item._tipo==='gasto'?T.roseLight:T.forestLight,padding:'2px 8px',borderRadius:6}}>{item._tipo==='gasto'?'GASTO':'INGRESO'}</span>
-                      <span style={{fontSize:11,color:T.muted}}>{fDate(item.fecha)}</span>
+          ) : (
+            <>
+              {allTrash.map((item, idx) => {
+                const deletedDate = new Date(item.deleted_at)
+                const purgeDate = new Date(deletedDate.getTime() + 15 * 24 * 60 * 60 * 1000)
+                const diasRestantes = Math.max(0, Math.ceil((purgeDate - Date.now()) / (24*60*60*1000)))
+                return (
+                  <Card key={`${item._tipo}-${item.id}-${idx}`} style={{marginBottom:10,padding:'16px 18px'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:12}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+                          <span style={{fontSize:10,fontWeight:700,color:item._tipo==='gasto'?T.rose:T.forest,background:item._tipo==='gasto'?T.roseLight:T.forestLight,padding:'2px 8px',borderRadius:6}}>{item._tipo==='gasto'?'GASTO':'INGRESO'}</span>
+                          <span style={{fontSize:11,color:T.muted}}>{item.fecha ? fDate(item.fecha) : ''}</span>
+                        </div>
+                        <p style={{fontSize:15,fontWeight:700,color:T.navy,marginBottom:3}}>{item.concepto || 'Sin concepto'}</p>
+                        <p style={{fontSize:13,fontWeight:800,color:T.rose}}>{fUSD(toUSD(item.monto || 0, item.moneda || 'USD', data.tasa))}</p>
+                        <p style={{fontSize:11,color:T.muted,marginTop:4}}>Se elimina en {diasRestantes} dia{diasRestantes!==1?'s':''}</p>
+                      </div>
+                      <button onClick={()=>handleRestore(item)} style={{padding:'12px 16px',borderRadius:14,border:'none',background:T.forest,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6,flexShrink:0,WebkitTapHighlightColor:'transparent'}}>
+                        <RotateCcw size={16} color='#fff' strokeWidth={2}/>
+                        <span style={{fontSize:13,fontWeight:800,color:'#fff'}}>¡Restaurar!</span>
+                      </button>
                     </div>
-                    <p style={{fontSize:14,fontWeight:700,color:T.navy,marginBottom:2}}>{item.concepto}</p>
-                    <p style={{fontSize:12,color:T.muted}}>{fUSD(toUSD(item.monto, item.moneda, data.tasa))} · Se elimina en {diasRestantes} dia{diasRestantes!==1?'s':''}</p>
-                  </div>
-                  <button onClick={()=>handleRestore(item)} style={{padding:'8px 14px',borderRadius:12,border:'none',background:T.forestLight,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6,flexShrink:0,WebkitTapHighlightColor:'transparent'}}><span style={{fontSize:12,fontWeight:700,color:T.forest}}>Restaurar</span>
-                    <RotateCcw size={16} color={T.forest} strokeWidth={1.75}/>
-                  </button>
-                </div>
-              </Card>
-            )
-          })}
+                  </Card>
+                )
+              })}
+
+              <button onClick={vaciarPapelera} style={{width:'100%',padding:'14px',borderRadius:14,border:`1.5px solid ${T.rose}33`,background:T.roseLight,cursor:'pointer',marginTop:12,fontSize:13,fontWeight:700,color:T.rose,WebkitTapHighlightColor:'transparent'}}>
+                ¡Vaciar papelera permanentemente!
+              </button>
+            </>
+          )}
+
           <BottomNav pantalla={pantalla} go={go}/>
+          <Confirm title={confirm?.title} msg={confirm?.msg} onYes={confirm?.onYes} onNo={()=>setConfirm(null)} yesLabel={confirm?.yesLabel} noLabel={confirm?.noLabel} yesColor={confirm?.yesColor}>{confirm?.body}</Confirm>
         </div>
       )
     }
