@@ -96,21 +96,24 @@ function dataVacia(tasa = 481.21) {
 
 // ─── BCV ─────────────────────────────────────────────────────────────────────
 async function fetchTasaBCV() {
-  const url = 'https://www.bcv.org.ve/glosario/cambio-oficial'
-  const proxies = [
-    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-    u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-  ]
-  for (const px of proxies) {
-    try {
-      const res  = await fetch(px(url), { signal: AbortSignal.timeout(7000) })
-      const html = await res.text()
-      for (const m of html.matchAll(/(\d{3,})[,.](\d{2})\b/g)) {
-        const v = parseFloat(`${m[1]}.${m[2]}`)
-        if (v > 100 && v < 2000) return Math.round(v * 100) / 100
-      }
-    } catch {}
-  }
+  // Fuente 1: dolarapi.com (espejo confiable del BCV)
+  try {
+    const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', { signal: AbortSignal.timeout(2000) })
+    const json = await res.json()
+    const v = parseFloat(json.promedio)
+    if (v > 10 && v < 9999) return Math.round(v * 100) / 100
+  } catch {}
+
+  // Fuente 2: proxy directo al BCV (fallback)
+  try {
+    const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://www.bcv.org.ve/glosario/cambio-oficial'), { signal: AbortSignal.timeout(2000) })
+    const html = await res.text()
+    for (const m of html.matchAll(/(\d{3,})[,.](\d{2})\b/g)) {
+      const v = parseFloat(`${m[1]}.${m[2]}`)
+      if (v > 100 && v < 2000) return Math.round(v * 100) / 100
+    }
+  } catch {}
+
   return null
 }
 
@@ -813,7 +816,7 @@ export default function App() {
       ctrl.abort()
       setBcvLoad(false)
       setTasaEditing(true)
-      showToast('Error BCV: Ingresa manual', 3000)
+      showToast('¡BCV no responde! Toca para editar manual', 3000)
     }, 3000)
 
     fetchTasaBCV().then(t => {
@@ -825,14 +828,14 @@ export default function App() {
         showToast(`Tasa: Bs ${t}`)
       } else {
         setTasaEditing(true)
-        showToast('Error BCV: Ingresa manual', 3000)
+        showToast('¡BCV no responde! Toca para editar manual', 3000)
       }
     }).catch(() => {
       clearTimeout(timeout)
       if (ctrl.signal.aborted) return
       setBcvLoad(false)
       setTasaEditing(true)
-      showToast('Error BCV: Ingresa manual', 3000)
+      showToast('¡BCV no responde! Toca para editar manual', 3000)
     })
   }
 
