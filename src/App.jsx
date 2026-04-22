@@ -1288,7 +1288,7 @@ export default function App() {
               setPendGastos(mapped); go('confirmarVoz')
               showToast(`${mapped.length} gasto(s) detectado(s)`)
             } else {
-              showToast('La IA no pudo interpretar. Intenta de nuevo.')
+              showToast('La IA no pudo interpretar. ¡Intenta de nuevo!')
             }
           } else {
             const items = parsearVozMultiple(txt, data.tasa)
@@ -1611,12 +1611,16 @@ export default function App() {
 
     // Calcular total detectado en USD
     const tasaCalc = tasaDetectada > 50 ? tasaDetectada : data.tasa
+    const tasaDifiere = tasaDetectada > 50 && Math.abs(tasaDetectada - data.tasa) > 0.5
     let sumaDetectada = 0
     for (const [k, v] of Object.entries(campos)) {
       if (k === 'cuentas_cobrar') continue
       sumaDetectada += esUSD(k) ? v : v / tasaCalc
     }
-    const coincide = cierreTotal > 0 && Math.abs(sumaDetectada - cierreTotal) < 2
+    sumaDetectada = redondear(sumaDetectada)
+    const diffRedondeo = cierreTotal > 0 ? redondear(cierreTotal - sumaDetectada) : 0
+    const coincide = cierreTotal > 0 && Math.abs(diffRedondeo) < 0.01
+    const necesitaAjuste = cierreTotal > 0 && !coincide && Math.abs(diffRedondeo) < 50
 
     return (
       <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 100px',overflowY:'auto'}}>
@@ -1634,14 +1638,24 @@ export default function App() {
           </Card>
         )}
 
-        {/* Tasa detectada */}
+        {/* Tasa detectada + alerta si difiere */}
         {tasaDetectada > 0 && (
-          <Card style={{marginBottom:12,background:T.cobaltLight,border:`1px solid ${T.cobalt}22`,display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px 20px'}}>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <DollarSign size={16} color={T.cobalt} strokeWidth={1.75}/>
-              <span style={{fontSize:14,fontWeight:700,color:T.cobalt}}>Tasa detectada</span>
+          <Card style={{marginBottom:12,background:tasaDifiere?T.amberLight:T.cobaltLight,border:`1px solid ${tasaDifiere?T.amber:T.cobalt}22`,padding:'16px 20px'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <DollarSign size={16} color={tasaDifiere?T.amber:T.cobalt} strokeWidth={1.75}/>
+                <span style={{fontSize:14,fontWeight:700,color:tasaDifiere?T.amber:T.cobalt}}>Tasa detectada</span>
+              </div>
+              <span style={{fontSize:22,fontWeight:900,color:T.navy}}>Bs {tasaDetectada}</span>
             </div>
-            <span style={{fontSize:22,fontWeight:900,color:T.navy}}>Bs {tasaDetectada}</span>
+            {tasaDifiere && (
+              <div style={{marginTop:10}}>
+                <p style={{fontSize:12,color:T.sub,marginBottom:8}}>La tasa del sistema es Bs {data.tasa}. ¿Deseas usar la tasa de la libreta para este cierre?</p>
+                <Btn onClick={()=>{applyTasa(tasaDetectada);showToast(`¡Tasa actualizada a Bs ${tasaDetectada}!`)}} bg={T.amber} style={{padding:'9px 14px',fontSize:12}} icon={CheckCircle}>
+                  Usar Bs {tasaDetectada}
+                </Btn>
+              </div>
+            )}
           </Card>
         )}
 
@@ -1666,31 +1680,44 @@ export default function App() {
           </Card>
         )}
 
-        {/* Validación de total */}
+        {/* Ajuste por redondeo (si hay diferencia pequeña) */}
+        {necesitaAjuste && (
+          <Card style={{marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 20px',background:'#FEF7EC',border:`1px solid ${T.amber}22`}}>
+            <div>
+              <span style={{fontSize:13,fontWeight:600,color:T.amber}}>Ajuste por redondeo</span>
+              <p style={{fontSize:11,color:T.muted,marginTop:2}}>Diferencia por conversion de tasa</p>
+            </div>
+            <span style={{fontSize:16,fontWeight:800,color:T.amber}}>{diffRedondeo > 0 ? '+' : ''}{fUSD(diffRedondeo)}</span>
+          </Card>
+        )}
+
+        {/* Verificacion de total */}
         {cierreTotal > 0 && (
           <Card style={{
             marginBottom:20,
-            background: coincide ? T.forestLight : T.amberLight,
-            border: `1px solid ${coincide ? T.forest : T.amber}22`,
+            background: (coincide || necesitaAjuste) ? T.forestLight : T.amberLight,
+            border: `1px solid ${(coincide || necesitaAjuste) ? T.forest : T.amber}22`,
           }}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <div>
-                <p style={{fontSize:12,fontWeight:700,color:coincide?T.forest:T.amber,letterSpacing:'.06em'}}>
-                  {coincide ? 'TOTAL VERIFICADO' : 'DIFERENCIA DETECTADA'}
+                <p style={{fontSize:12,fontWeight:700,color:(coincide||necesitaAjuste)?T.forest:T.amber,letterSpacing:'.06em'}}>
+                  {(coincide || necesitaAjuste) ? 'TOTAL VERIFICADO' : 'DIFERENCIA GRANDE'}
                 </p>
                 <p style={{fontSize:13,color:T.sub,marginTop:4}}>
-                  Suma calculada: {fUSD(sumaDetectada)}
+                  Suma: {fUSD(sumaDetectada)}{necesitaAjuste?` + ajuste ${fUSD(diffRedondeo)}`:''}
                 </p>
               </div>
               <div style={{textAlign:'right'}}>
                 <p style={{fontSize:11,color:T.muted}}>Total libreta</p>
-                <p style={{fontSize:20,fontWeight:900,color:coincide?T.forest:T.amber}}>{fUSD(cierreTotal)}</p>
+                <p style={{fontSize:20,fontWeight:900,color:(coincide||necesitaAjuste)?T.forest:T.amber}}>{fUSD(cierreTotal)}</p>
               </div>
             </div>
-            {coincide && (
+            {(coincide || necesitaAjuste) && (
               <div style={{display:'flex',alignItems:'center',gap:6,marginTop:12}}>
                 <CheckCircle size={14} color={T.forest} strokeWidth={1.75}/>
-                <span style={{fontSize:12,fontWeight:600,color:T.forest}}>Los numeros coinciden</span>
+                <span style={{fontSize:12,fontWeight:600,color:T.forest}}>
+                  {coincide ? '¡Los numeros coinciden!' : '¡Ajuste aplicado automaticamente!'}
+                </span>
               </div>
             )}
           </Card>
