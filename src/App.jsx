@@ -183,6 +183,11 @@ function toVzlaDateStr(d) {
   return vzla.toISOString().split('T')[0]
 }
 
+// Normaliza entrada de montos: acepta coma o punto como decimal
+function normMonto(val) {
+  return val.replace(/[^0-9.,]/g, '').replace(',', '.')
+}
+
 function redondear(v) {
   return Math.round((parseFloat(v) || 0) * 100) / 100
 }
@@ -581,7 +586,7 @@ function CampoMonto({ label, value, onChange, moneda='BS', icon:Icon, micActive,
           <span style={{position:'absolute',left:13,top:'50%',transform:'translateY(-50%)',fontSize:16,fontWeight:700,color:dimmed?T.muted:filled?T.cobalt:T.muted}}>
             {moneda==='USD'?'$':'Bs'}
           </span>
-          <input type="number" inputMode="decimal" value={value} onChange={e=>onChange(e.target.value)} placeholder="0,00"
+          <input type="text" inputMode="decimal" value={value} onChange={e=>onChange(normMonto(e.target.value))} placeholder="0,00"
             style={{width:'100%',paddingLeft:38,paddingRight:12,height:50,fontSize:19,fontWeight:800,border:`1.5px solid ${dimmed?T.amberLight:filled?T.cobalt:T.border}`,borderRadius:14,background:dimmed?T.amberLight:filled?T.cobaltLight:T.bg,color:T.navy,outline:'none',transition:'border-color .15s,background .15s'}}/>
         </div>
         {onMic&&(
@@ -795,9 +800,9 @@ export default function App() {
   const tasaStale = (Date.now() - getTasaTs()) > 4 * 60 * 60 * 1000
 
   function onTasaInput(val) {
-    const clean = val.replace(/[^0-9.,]/g, '')
+    const clean = normMonto(val)
     setTasaTemp(clean)
-    const num = parseFloat(clean.replace(',', '.'))
+    const num = parseFloat(clean)
     if (num >= 10 && num <= 9999) applyTasa(num)
   }
 
@@ -1689,7 +1694,7 @@ export default function App() {
         </div>
         <div style={{position:'relative'}}>
           <span style={{position:'absolute',left:16,top:'50%',transform:'translateY(-50%)',fontSize:22,fontWeight:700,color:T.sub}}>Bs</span>
-          <input type="number" inputMode="decimal" value={tasaTemp} onChange={e=>setTasaTemp(e.target.value)}
+          <input type="text" inputMode="decimal" value={tasaTemp} onChange={e=>{const v=normMonto(e.target.value);setTasaTemp(v);const num=parseFloat(v);if(num>=10&&num<=9999)applyTasa(num)}}
             style={{width:'100%',paddingLeft:54,paddingRight:16,height:74,fontSize:34,fontWeight:900,textAlign:'right',border:`2px solid ${T.cobalt}`,borderRadius:18,background:T.cobaltLight,color:T.navy,outline:'none',letterSpacing:'-.02em'}}/>
         </div>
         <p style={{fontSize:12,color:T.muted,textAlign:'center',marginTop:10,lineHeight:1.5}}>Cambia si la tasa de la calle es diferente</p>
@@ -1950,8 +1955,8 @@ export default function App() {
                   <p style={{fontSize:10,fontWeight:700,color:T.cobalt,letterSpacing:'.06em',marginBottom:6}}>DOLARES</p>
                   <div style={{position:'relative'}}>
                     <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',fontSize:15,fontWeight:700,color:T.cobalt}}>$</span>
-                    <input type="number" inputMode="decimal" value={g.monto}
-                      onChange={e => editPendField(i, 'usd', e.target.value)}
+                    <input type="text" inputMode="decimal" value={g.monto}
+                      onChange={e => editPendField(i, 'usd', normMonto(e.target.value))}
                       style={{width:'100%',paddingLeft:30,paddingRight:10,height:46,fontSize:18,fontWeight:800,border:`1.5px solid ${T.brandGold}`,borderRadius:12,background:T.cobaltLight,color:T.navy,outline:'none'}}
                     />
                   </div>
@@ -1960,10 +1965,10 @@ export default function App() {
                   <p style={{fontSize:10,fontWeight:700,color:T.amber,letterSpacing:'.06em',marginBottom:6}}>BOLIVARES</p>
                   <div style={{position:'relative'}}>
                     <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:14,fontWeight:700,color:T.amber}}>Bs</span>
-                    <input type="number" inputMode="decimal"
+                    <input type="text" inputMode="decimal"
                       value={g.bsOrig != null && g.bsOrig > 0 ? g.bsOrig : ''}
                       placeholder={String(Math.round(n(g.monto) * data.tasa))}
-                      onChange={e => editPendField(i, 'bs', e.target.value)}
+                      onChange={e => editPendField(i, 'bs', normMonto(e.target.value))}
                       style={{width:'100%',paddingLeft:34,paddingRight:10,height:46,fontSize:18,fontWeight:800,border:`1.5px solid ${T.brandGold}`,borderRadius:12,background:T.amberLight,color:T.navy,outline:'none'}}
                     />
                   </div>
