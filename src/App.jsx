@@ -2248,12 +2248,42 @@ export default function App() {
       </div>
 
       {/* Botón secundario: gasto manual */}
-      <Btn onClick={()=>go('nuevoGasto')} bg={T.border} color={T.navy} full icon={Plus} style={{fontSize:13,padding:'14px',boxShadow:'none'}}>
+      <Btn onClick={()=>go('nuevoGasto')} bg={T.border} color={T.navy} full icon={Plus} style={{fontSize:13,padding:'14px',boxShadow:'none',marginBottom:20}}>
         Registrar gasto manual
       </Btn>
 
+      {/* Gastos de hoy — editables y borrables */}
+      {data.gastos.length > 0 && (
+        <>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <Label>GASTOS DE HOY</Label>
+            <button onClick={()=>go('gastos')} style={{background:'none',border:'none',color:T.muted,fontSize:12,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',gap:3}}>
+              Ver todos <ChevronRight size={12} strokeWidth={2}/>
+            </button>
+          </div>
+          <Card style={{borderRadius:24,marginBottom:16}}>
+            {data.gastos.slice(0, 5).map((g, i) => (
+              <div key={g.id}>
+                {i > 0 && <Sep/>}
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{fontSize:14,fontWeight:700,color:T.navy,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.concepto}</p>
+                    <p style={{fontSize:11,color:T.muted,marginTop:2}}>{g.categoria}</p>
+                  </div>
+                  <span style={{fontSize:15,fontWeight:800,color:T.rose,marginRight:10}}>{g.moneda==='USD'?fUSD(g.monto):fBS(g.monto)}</span>
+                  <button onClick={()=>eliminarGasto(g)} style={{background:T.roseLight,border:'none',borderRadius:10,width:32,height:32,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,WebkitTapHighlightColor:'transparent'}}>
+                    <Trash2 size={14} color={T.rose} strokeWidth={1.75}/>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </Card>
+        </>
+      )}
+
       <BottomNav pantalla={pantalla} go={go}/>
       <Confetti active={confetti}/><Toast msg={toast}/><SavingOverlay active={saving} msg={savingMsg}/>
+      <Confirm title={confirm?.title} msg={confirm?.msg} onYes={confirm?.onYes} onNo={()=>setConfirm(null)} yesLabel={confirm?.yesLabel} noLabel={confirm?.noLabel} yesColor={confirm?.yesColor}>{confirm?.body}</Confirm>
     </div>
   )
 
