@@ -887,25 +887,30 @@ export default function App() {
       noLabel: 'No, dejarlo',
       yesColor: T.rose,
       onYes: async () => {
-        // Guardar copia para la papelera ANTES de borrar
         const trashCopy = { ...g, _tipo: 'gasto' }
-
-        // Quitar del estado local inmediatamente
-        const nueva = { ...data, gastos: data.gastos.filter(x => x.id !== g.id) }
-        setData(nueva); guardarData(nueva)
-        setDbGastos(prev => prev.filter(x => x.id !== g.id))
         setConfirm(null)
 
-        if (typeof g.id === 'number' && g.id > 0 && g.id < 1e12) {
-          if (papeleraOk) {
-            await softDeleteGasto(g.id)
+        // 1. Quitar del estado local inmediatamente
+        const nueva = { ...data, gastos: data.gastos.filter(x => String(x.id) !== String(g.id)) }
+        setData(nueva); guardarData(nueva)
+        setDbGastos(prev => prev.filter(x => x.id !== g.id))
+
+        // 2. Borrar de Supabase (buscar por concepto+monto+fecha si el id es local)
+        if (supabase) {
+          const dbMatch = dbGastos.find(x => x.id === g.id)
+          if (dbMatch) {
+            // Tiene ID de Supabase
+            if (papeleraOk) await softDeleteGasto(dbMatch.id)
+            else await deleteGasto(dbMatch.id)
           } else {
-            await deleteGasto(g.id)
-            addToLocalTrash(trashCopy)
+            // ID local — buscar en DB por concepto+monto para limpiar
+            const { data: matches } = await supabase.from('gastos').select('id').eq('concepto', g.concepto).eq('monto', parseFloat(g.monto) || 0).limit(1)
+            if (matches?.[0]) await deleteGasto(matches[0].id)
           }
-        } else {
-          addToLocalTrash(trashCopy)
         }
+
+        // 3. Guardar en papelera local
+        addToLocalTrash(trashCopy)
         showToast('¡Enviado a la papelera! (15 dias para restaurar)')
       },
     })
@@ -1606,7 +1611,7 @@ export default function App() {
   )
 
   const tUSD = totalUSD(data.ingresos, data.tasa)
-  const tGas = totalGastosUSD(data.gastos, data.tasa)
+  const tGas = totalGastosUSD(data.gastos.filter(g => !g.deleted_at && n(g.monto) > 0), data.tasa)
   const neto = tUSD - tGas
   const ing  = data.ingresos
   const cc   = n(ing.cuentas_cobrar)
@@ -2253,7 +2258,7 @@ export default function App() {
       </Btn>
 
       {/* Gastos de hoy — editables y borrables */}
-      {data.gastos.length > 0 && (
+      {data.gastos.filter(g => !g.deleted_at && n(g.monto) > 0).length > 0 && (
         <>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
             <Label>GASTOS DE HOY</Label>
@@ -2262,7 +2267,7 @@ export default function App() {
             </button>
           </div>
           <Card style={{borderRadius:24,marginBottom:16}}>
-            {data.gastos.slice(0, 5).map((g, i) => (
+            {data.gastos.filter(g => !g.deleted_at && n(g.monto) > 0).slice(0, 5).map((g, i) => (
               <div key={g.id}>
                 {i > 0 && <Sep/>}
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -2291,7 +2296,8 @@ export default function App() {
   // GASTOS (tab)
   // ══════════════════════════════════════════════════════════
   if (pantalla === 'gastos') {
-    const porCat=CATS.map(cat=>({...cat,items:data.gastos.filter(g=>g.categoria===cat.id),total:data.gastos.filter(g=>g.categoria===cat.id).reduce((a,g)=>a+(n(g.monto))*(g.moneda==='USD'?1:1/data.tasa),0)})).filter(c=>c.items.length>0)
+    const activeGastos = data.gastos.filter(g => !g.deleted_at && n(g.monto) > 0)
+    const porCat=CATS.map(cat=>({...cat,items:activeGastos.filter(g=>g.categoria===cat.id),total:activeGastos.filter(g=>g.categoria===cat.id).reduce((a,g)=>a+(n(g.monto))*(g.moneda==='USD'?1:1/data.tasa),0)})).filter(c=>c.items.length>0)
     return (
       <div style={{minHeight:'100svh',background:T.bg,padding:'52px 20px 96px',overflowY:'auto'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
@@ -2938,7 +2944,7 @@ export default function App() {
                     <p style={{fontSize:14,fontWeight:700,color:T.navy,marginBottom:2}}>{item.concepto}</p>
                     <p style={{fontSize:12,color:T.muted}}>{fUSD(toUSD(item.monto, item.moneda, data.tasa))} · Se elimina en {diasRestantes} dia{diasRestantes!==1?'s':''}</p>
                   </div>
-                  <button onClick={()=>handleRestore(item)} style={{width:38,height:38,borderRadius:10,border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,WebkitTapHighlightColor:'transparent'}}>
+                  <button onClick={()=>handleRestore(item)} style={{padding:'8px 14px',borderRadius:12,border:'none',background:T.forestLight,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6,flexShrink:0,WebkitTapHighlightColor:'transparent'}}><span style={{fontSize:12,fontWeight:700,color:T.forest}}>Restaurar</span>
                     <RotateCcw size={16} color={T.forest} strokeWidth={1.75}/>
                   </button>
                 </div>
