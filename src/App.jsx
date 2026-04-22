@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { supabase, fetchGastos, fetchIngresos, fetchGastosTrash, fetchIngresosTrash, insertGasto, softDeleteGasto, restoreGasto, deleteGasto, deleteIngresosByFecha, softDeleteIngresosByFecha, deleteGastosByFecha, softDeleteGastosByFecha, insertIngreso, restoreIngreso, signIn, signUp, signOut, onAuthChange, getSession, autoPurge } from './supabase'
+import { supabase, fetchGastos, fetchIngresos, fetchGastosTrash, fetchIngresosTrash, insertGasto, softDeleteGasto, restoreGasto, deleteGasto, deleteIngresosByFecha, softDeleteIngresosByFecha, deleteGastosByFecha, softDeleteGastosByFecha, insertIngreso, restoreIngreso, signIn, signUp, signOut, onAuthChange, getSession, autoPurge, checkDeletedAtColumn } from './supabase'
 import {
   Home, Receipt, BarChart3, CalendarDays, PieChart as PieIcon,
   DollarSign, Landmark, Smartphone, Banknote, Bike, Zap,
@@ -712,6 +712,7 @@ export default function App() {
   const [trashGastos, setTrashGastos] = useState([])
   const [trashIngresos, setTrashIngresos] = useState([])
   const [showTrash,  setShowTrash]  = useState(false)
+  const [papeleraOk, setPapeleraOk] = useState(false)
   const [saving,     setSaving]     = useState(false)
   const [savingMsg,  setSavingMsg]  = useState('')
   const [ingDirty,   setIngDirty]   = useState(false)
@@ -737,15 +738,18 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // ── Cargar datos de Supabase + auto-purge ────────────────────────────────────
+  // ── Cargar datos de Supabase + check papelera ────────────────────────────────
   useEffect(() => {
     if (!supabase) { setDbLoaded(true); return }
-    autoPurge().then(() =>
-      Promise.all([fetchGastos(), fetchIngresos()]).then(([g, i]) => {
-        setDbGastos(g); setDbIngresos(i); setDbLoaded(true)
-        console.log(`Supabase: ${g.length} gastos, ${i.length} ingresos`)
-      })
-    )
+    Promise.all([
+      fetchGastos(),
+      fetchIngresos(),
+      checkDeletedAtColumn(),
+      autoPurge(),
+    ]).then(([g, i, hasCol]) => {
+      setDbGastos(g); setDbIngresos(i); setPapeleraOk(hasCol); setDbLoaded(true)
+      console.log(`Supabase: ${g.length} gastos, ${i.length} ingresos, papelera: ${hasCol?'OK':'NEEDS ALTER TABLE'}`)
+    })
   }, [])
 
   // ── Init (tasa instantanea desde cache, sin esperar BCV) ────────────────────
@@ -879,15 +883,24 @@ export default function App() {
       yesLabel: 'Mandar a la papelera',
       noLabel: 'No, dejarlo',
       yesColor: T.rose,
-      onYes: () => {
+      onYes: async () => {
         const nueva = { ...data, gastos: data.gastos.filter(x => x.id !== g.id) }
         setData(nueva); guardarData(nueva)
-        // Soft delete in Supabase (moves to trash)
-        if (typeof g.id === 'number' && g.id > 0 && g.id < 1e12) {
-          softDeleteGasto(g.id).then(() => setDbGastos(prev => prev.filter(x => x.id !== g.id)))
-        }
         setConfirm(null)
-        showToast('Gasto enviado a la papelera (15 dias para restaurar)')
+
+        if (typeof g.id === 'number' && g.id > 0 && g.id < 1e12) {
+          if (papeleraOk) {
+            const ok = await softDeleteGasto(g.id)
+            setDbGastos(prev => prev.filter(x => x.id !== g.id))
+            showToast(ok ? '¡Enviado a la papelera! (15 dias para restaurar)' : '¡Gasto eliminado!')
+          } else {
+            await deleteGasto(g.id)
+            setDbGastos(prev => prev.filter(x => x.id !== g.id))
+            showToast('¡Gasto eliminado! (papelera no disponible, ejecuta ALTER TABLE)')
+          }
+        } else {
+          showToast('¡Gasto eliminado!')
+        }
       },
     })
   }
@@ -1063,12 +1076,17 @@ export default function App() {
       yesColor: T.rose,
       onYes: async () => {
         if (supabase) {
-          await softDeleteIngresosByFecha(fecha)
+          if (papeleraOk) {
+            await softDeleteIngresosByFecha(fecha)
+            showToast('¡Cierre enviado a la papelera! (15 dias)')
+          } else {
+            await deleteIngresosByFecha(fecha)
+            showToast('¡Cierre eliminado! (papelera no disponible)')
+          }
           const [g, i] = await Promise.all([fetchGastos(), fetchIngresos()])
           setDbGastos(g); setDbIngresos(i)
         }
         setConfirm(null); setHistItem(null)
-        showToast('Cierre enviado a la papelera (15 dias)')
       },
     })
   }
@@ -2811,9 +2829,10 @@ export default function App() {
       const allTrash = [...trashGastos.map(g=>({...g,_tipo:'gasto'})), ...trashIngresos.map(i=>({...i,_tipo:'ingreso'}))].sort((a,b)=>(b.deleted_at||'').localeCompare(a.deleted_at||''))
 
       async function handleRestore(item) {
-        if (item._tipo === 'gasto') { await restoreGasto(item.id); setDbGastos(await fetchGastos()); setTrashGastos(await fetchGastosTrash()) }
-        else { await restoreIngreso(item.id); setDbIngresos(await fetchIngresos()); setTrashIngresos(await fetchIngresosTrash()) }
-        showToast('Registro restaurado')
+        let ok = false
+        if (item._tipo === 'gasto') { ok = await restoreGasto(item.id); setDbGastos(await fetchGastos()); setTrashGastos(await fetchGastosTrash()) }
+        else { ok = await restoreIngreso(item.id); setDbIngresos(await fetchIngresos()); setTrashIngresos(await fetchIngresosTrash()) }
+        showToast(ok ? '¡Registro restaurado con exito!' : '¡Error al restaurar!')
       }
 
       return (
@@ -2821,7 +2840,15 @@ export default function App() {
           <InnerHeader title="Papelera" onBack={()=>setShowTrash(false)}/>
           <p style={{fontSize:13,color:T.sub,marginBottom:20}}>Los registros se eliminan definitivamente despues de 15 dias</p>
 
-          {allTrash.length === 0 ? (
+          {!papeleraOk && (
+            <Card style={{marginBottom:16,background:'#FFF0EB',border:`1px solid ${T.rose}22`,padding:'16px 18px'}}>
+              <p style={{fontSize:13,fontWeight:700,color:T.rose,marginBottom:4}}>Papelera no disponible</p>
+              <p style={{fontSize:12,color:T.sub,lineHeight:1.5}}>Falta ejecutar en Supabase SQL Editor:</p>
+              <p style={{fontSize:11,color:T.navy,fontWeight:600,background:T.surface,padding:'8px 10px',borderRadius:8,marginTop:6,fontFamily:'monospace'}}>ALTER TABLE gastos ADD COLUMN deleted_at timestamptz;<br/>ALTER TABLE ingresos ADD COLUMN deleted_at timestamptz;</p>
+            </Card>
+          )}
+
+          {allTrash.length === 0 && papeleraOk ? (
             <Card style={{textAlign:'center',padding:48,borderRadius:28}}>
               <Trash size={30} color={T.muted} strokeWidth={1.5} style={{margin:'0 auto'}}/>
               <p style={{fontSize:15,fontWeight:700,color:T.navy,marginTop:14}}>Papelera vacia</p>
