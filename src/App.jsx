@@ -2823,19 +2823,22 @@ export default function App() {
               <div style={{width:36,height:36,borderRadius:10,background:T.rose,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                 <AlertCircle size={18} color='#fff' strokeWidth={1.75}/>
               </div>
-              <div>
-                <p style={{fontSize:14,fontWeight:800,color:T.rose,marginBottom:4}}>
-                  Arcelia, {diasPendientes.length === 1 ? 'falta el cierre del' : 'faltan los cierres del'}
+              <div style={{flex:1}}>
+                <p style={{fontSize:14,fontWeight:800,color:T.rose,marginBottom:8}}>
+                  Arcelia, {diasPendientes.length === 1 ? 'falta 1 cierre' : `faltan ${diasPendientes.length} cierres`}
                 </p>
-                <p style={{fontSize:15,fontWeight:700,color:T.navy,lineHeight:1.5}}>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
                   {diasPendientes.map(d => {
                     const dow = new Date(d + 'T12:00:00').getDay()
-                    return diasNombreFull[dow]
-                  }).join(' y ')}
-                </p>
-                <Btn onClick={()=>go('cierre')} bg={T.rose} style={{marginTop:12,padding:'10px 16px',fontSize:12}} icon={BarChart3}>
-                  Ir a cerrar caja
-                </Btn>
+                    return (
+                      <button key={d} onClick={()=>{setFechaCierre(d);go('cierre');showToast(`Cerrando caja del ${diasNombreFull[dow]} ${fDate(d)}`)}}
+                        style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:T.surface,border:`1px solid ${T.rose}22`,borderRadius:12,padding:'10px 14px',cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+                        <span style={{fontSize:14,fontWeight:700,color:T.navy}}>{diasNombreFull[dow]} {fDate(d)}</span>
+                        <ChevronRight size={16} color={T.rose} strokeWidth={2}/>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           </Card>
