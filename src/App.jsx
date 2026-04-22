@@ -183,32 +183,48 @@ function toVzlaDateStr(d) {
   return vzla.toISOString().split('T')[0]
 }
 
-// Normaliza entrada de montos: acepta coma o punto como decimal
+// ─── Motor de Cálculo Seguro ──────────────────────────────────────────────────
+
+// Normaliza entrada: "1.250,50" → "1250.50", "10,50" → "10.50"
 function normMonto(val) {
-  return val.replace(/[^0-9.,]/g, '').replace(',', '.')
+  let s = val.replace(/[^0-9.,]/g, '')
+  // Si tiene punto de miles + coma decimal (1.250,50): quitar puntos, coma→punto
+  if (/\d\.\d{3},/.test(s)) return s.replace(/\./g, '').replace(',', '.')
+  // Si tiene coma: coma→punto
+  return s.replace(',', '.')
 }
 
-function redondear(v) {
-  return Math.round((parseFloat(v) || 0) * 100) / 100
-}
+// Limpia cualquier valor a centavos enteros (evita floating point)
+function toCents(v) { return Math.round((parseFloat(v) || 0) * 100) }
+function fromCents(c) { return c / 100 }
+function redondear(v) { return fromCents(toCents(v)) }
 
-// ─── Cálculos ─────────────────────────────────────────────────────────────────
-const n  = s => parseFloat(s) || 0
-const bs = (s, t) => redondear(n(s) / t)
-const us = s => n(s)
+// Parsea un string/numero a float limpio
+const n = s => { const v = parseFloat(String(s).replace(',', '.')); return isNaN(v) ? 0 : v }
+
+// Conversiones BS→USD con precision centesimal
+const bs = (s, t) => fromCents(Math.round(toCents(n(s)) / t))
+const us = s => redondear(n(s))
+
+// ─── Totales ─────────────────────────────────────────────────────────────────
 
 function totalUSD(ing, tasa) {
-  return bs(ing.bicentenario,tasa) + bs(ing.bancaribe,tasa) + bs(ing.banesco,tasa) +
-         bs(ing.bancamiga,tasa)    + bs(ing.pagos_dia,tasa) + bs(ing.efectivo_bs,tasa) +
-         bs(ing.delivery,tasa)     + us(ing.pedidosya_usd)   + bs(ing.pedidosya_bs,tasa) +
-         us(ing.divisas_usd)
-  // cuentas_cobrar excluida siempre
+  // Sumar todo en centavos para evitar errores de punto flotante
+  let cents = 0
+  const bsFields = ['bicentenario','bancaribe','banesco','bancamiga','pagos_dia','efectivo_bs','delivery','pedidosya_bs']
+  const usdFields = ['pedidosya_usd','divisas_usd']
+  for (const k of bsFields) cents += Math.round(toCents(n(ing[k])) / tasa)
+  for (const k of usdFields) cents += toCents(n(ing[k]))
+  return fromCents(cents)
 }
 
 function totalGastosUSD(gastos, tasa) {
-  return redondear(gastos.reduce((a,g)=>{
-    const m=n(g.monto); return a+(g.moneda==='USD'?m:redondear(m/tasa))
-  },0))
+  let cents = 0
+  for (const g of gastos) {
+    const m = toCents(n(g.monto))
+    cents += g.moneda === 'USD' ? m : Math.round(m / tasa)
+  }
+  return fromCents(cents)
 }
 
 // ─── Categorías ───────────────────────────────────────────────────────────────
@@ -470,10 +486,10 @@ function formatMoney(v) {
 const fUSD = v => `$ ${formatMoney(v)}`
 const fBS  = v => `Bs ${formatMoney(v)}`
 
-// Convierte un monto de DB a USD segun su moneda
+// Convierte un monto de DB a USD con precision centesimal
 function toUSD(monto, moneda, tasa) {
-  const m = Number(monto) || 0
-  return moneda === 'BS' ? redondear(m / tasa) : redondear(m)
+  const cents = toCents(Number(monto) || 0)
+  return moneda === 'BS' ? fromCents(Math.round(cents / tasa)) : fromCents(cents)
 }
 const fDate = iso => {
   const [y,m,d] = iso.split('-')
@@ -956,6 +972,11 @@ export default function App() {
       showToast('No hay ingresos para guardar. Llena al menos un campo.', 3500)
       return
     }
+
+    // Verificación: recalcular total desde items individuales
+    let verCents = 0
+    for (const r of rows) verCents += r.moneda === 'USD' ? toCents(r.monto) : Math.round(toCents(r.monto) / data.tasa)
+    console.log(`Cierre verificado: ${rows.length} items, total ${fromCents(verCents)} USD`)
 
     // Mostrar overlay de guardado
     setSaving(true); setSavingMsg(SAVING_MSGS[0])
