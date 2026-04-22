@@ -673,11 +673,13 @@ const SAVING_MSGS = [
 function SavingOverlay({ active, msg }) {
   if (!active) return null
   return (
-    <div style={{position:'fixed',inset:0,background:'rgba(94,64,91,0.85)',zIndex:9999,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:24}}>
-      <div style={{width:56,height:56,borderRadius:16,background:'rgba(255,255,255,0.15)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-        <RefreshCw size={28} color='#FFB752' strokeWidth={1.75} style={{animation:'spin 1s linear infinite'}}/>
+    <div style={{position:'fixed',inset:0,background:'rgba(94,64,91,0.55)',backdropFilter:'blur(8px)',WebkitBackdropFilter:'blur(8px)',zIndex:9999,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20}}>
+      <div style={{background:T.surface,borderRadius:28,padding:'36px 32px',textAlign:'center',boxShadow:'0 16px 48px rgba(0,0,0,0.2)',maxWidth:300}}>
+        <div style={{width:52,height:52,borderRadius:16,background:T.brandGold+'22',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px'}}>
+          <RefreshCw size={24} color={T.brandGold} strokeWidth={2} style={{animation:'spin 1s linear infinite'}}/>
+        </div>
+        <p style={{fontSize:16,fontWeight:700,color:T.navy,lineHeight:1.5}}>{msg}</p>
       </div>
-      <p style={{fontSize:17,fontWeight:700,color:'#fff',textAlign:'center',padding:'0 40px',lineHeight:1.5}}>{msg}</p>
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     </div>
   )
@@ -724,6 +726,7 @@ export default function App() {
   const [editingIdx, setEditingIdx] = useState(null)
   const [fechaCierre, setFechaCierre] = useState(hoy())
   const [tasaBuscando, setTasaBuscando] = useState(false)
+  const [tasaFailed,   setTasaFailed]   = useState(false)
   const [dbGastos,   setDbGastos]   = useState([])
   const [dbIngresos, setDbIngresos] = useState([])
   const [dbLoaded,   setDbLoaded]   = useState(false)
@@ -804,7 +807,7 @@ export default function App() {
 
   function onTasaInput(val) {
     const clean = val.replace(/[^0-9.,]/g, '')
-    setTasaTemp(clean)
+    setTasaTemp(clean); setTasaFailed(false)
     const num = parseFloat(clean.replace(',', '.'))
     if (num >= 10 && num <= 9999) applyTasa(num)
   }
@@ -818,23 +821,22 @@ export default function App() {
     if (bcvAbort.current) bcvAbort.current.abort()
     const ctrl = new AbortController()
     bcvAbort.current = ctrl
-    setTasaBuscando(true)
+    setTasaBuscando(true); setTasaFailed(false)
 
     const timeout = setTimeout(() => {
-      ctrl.abort()
-      setTasaBuscando(false)
-      showToast('BCV no responde, ponla tu', 2500)
+      ctrl.abort(); setTasaBuscando(false); setTasaFailed(true)
+      showToast('BCV no disponible, ingresa manual', 2500)
     }, 3000)
 
     fetchTasaBCV().then(t => {
       clearTimeout(timeout)
       if (ctrl.signal.aborted) return
       setTasaBuscando(false)
-      if (t) { applyTasa(t); showToast(`¡Tasa: Bs ${t}!`) }
-      else showToast('BCV no responde, ponla tu', 2500)
+      if (t) { applyTasa(t); setTasaFailed(false); showToast(`¡Tasa: Bs ${t}!`) }
+      else { setTasaFailed(true); showToast('BCV no disponible, ingresa manual', 2500) }
     }).catch(() => {
       clearTimeout(timeout)
-      if (!ctrl.signal.aborted) { setTasaBuscando(false); showToast('BCV no responde, ponla tu', 2500) }
+      if (!ctrl.signal.aborted) { setTasaBuscando(false); setTasaFailed(true); showToast('BCV no disponible, ingresa manual', 2500) }
     })
   }
 
@@ -2142,20 +2144,22 @@ export default function App() {
         {/* Acciones terciarias: WA + Tasa */}
         <div style={{display:'flex',alignItems:'center',gap:8,marginTop:2}}>
           <WaBtn onClick={()=>enviarResumen()}/>
-          <div style={{display:'flex',alignItems:'center',gap:6,background:T.amberLight,border:`1.5px solid ${T.brandGold}33`,borderRadius:14,padding:'5px 8px'}}>
-            <div style={{display:'flex',alignItems:'center',gap:3}}>
-              <span style={{fontSize:11,fontWeight:700,color:T.brand}}>Bs</span>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2}}>
+            <div style={{display:'flex',alignItems:'center',gap:4,background:tasaFailed?'#FFF0EB':T.amberLight,border:`1.5px solid ${tasaFailed?T.rose+'55':T.brandGold+'44'}`,borderRadius:14,padding:'5px 8px',transition:'all .2s'}}>
+              <Edit3 size={11} color={tasaFailed?T.rose:T.muted} strokeWidth={1.75}/>
+              <span style={{fontSize:11,fontWeight:700,color:tasaFailed?T.rose:T.brand}}>Bs</span>
               <input type="text" inputMode="decimal"
                 value={tasaTemp}
                 onChange={e => onTasaInput(e.target.value)}
                 onBlur={onTasaBlur}
                 onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                style={{width:72,height:32,fontSize:19,fontWeight:900,color:T.brand,background:'transparent',border:'none',padding:0,outline:'none',textAlign:'right'}}
+                style={{width:72,height:30,fontSize:19,fontWeight:900,color:tasaFailed?T.rose:T.brand,background:'transparent',border:'none',padding:0,outline:'none',textAlign:'right'}}
               />
+              <button onClick={buscarTasaBCV} style={{width:26,height:26,borderRadius:7,border:'none',background:tasaBuscando?T.brandGold+'22':'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
+                <RefreshCw size={13} color={tasaFailed?T.rose:T.brand} strokeWidth={1.75} style={{animation:tasaBuscando?'spin 1s linear infinite':'none'}}/>
+              </button>
             </div>
-            <button onClick={buscarTasaBCV} style={{width:28,height:28,borderRadius:8,border:'none',background:tasaBuscando?T.brandGold+'22':'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
-              <RefreshCw size={14} color={T.brand} strokeWidth={1.75} style={{animation:tasaBuscando?'spin 1s linear infinite':'none'}}/>
-            </button>
+            {tasaFailed && <span style={{fontSize:9,color:T.rose,fontWeight:600}}>BCV no disponible</span>}
           </div>
         </div>
       </div>
@@ -2775,13 +2779,14 @@ export default function App() {
             <Btn onClick={()=>editarCierreHistorico(hi.fecha, hi.ingresos)} bg={T.cobaltLight} color={T.brand} style={{boxShadow:'none',padding:'11px 6px',fontSize:11}} icon={Edit3}>
               Editar
             </Btn>
-            <Btn onClick={()=>{setFechaCierre(hi.fecha);cierreFileRef.current?.click()}} bg={T.amberLight} color={T.amber} style={{boxShadow:'none',padding:'11px 6px',fontSize:11}} icon={Camera}>
+            <Btn onClick={()=>{setFechaCierre(hi.fecha);document.getElementById('histRescan')?.click()}} bg={T.amberLight} color={T.amber} style={{boxShadow:'none',padding:'11px 6px',fontSize:11}} icon={Camera}>
               Re-escanear
             </Btn>
             <Btn onClick={()=>borrarCierreHistorico(hi.fecha)} bg={T.roseLight} color={T.rose} style={{boxShadow:'none',padding:'11px 6px',fontSize:11}} icon={Trash2}>
               Borrar
             </Btn>
           </div>
+          <input id="histRescan" type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{if(e.target.files[0]){setHistItem(null);procesarFoto(e.target.files[0])}e.target.value=''}}/>
           <div style={{background:'linear-gradient(145deg,#3D2539,#5E405B)',borderRadius:28,padding:'24px',marginBottom:18,boxShadow:'0 12px 40px rgba(0,0,0,0.15)'}}>
             <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'.08em'}}>NETO</p>
             <p style={{fontSize:36,fontWeight:900,color:'#fff',letterSpacing:'-.03em',marginTop:6}}>{fUSD(net2)}</p>
