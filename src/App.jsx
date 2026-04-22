@@ -597,8 +597,8 @@ function CampoMonto({ label, value, onChange, moneda='BS', icon:Icon, micActive,
 // ─── Botón WhatsApp terciario ─────────────────────────────────────────────────
 function WaBtn({ onClick }) {
   return (
-    <button onClick={onClick} title="Enviar a mi hija" style={{width:38,height:38,borderRadius:11,border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill={T.wa}>
+    <button onClick={onClick} title="Enviar resumen" style={{width:28,height:28,borderRadius:8,border:`1px solid ${T.border}`,background:'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth="1.5">
         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
       </svg>
     </button>
@@ -1543,7 +1543,7 @@ export default function App() {
       if (authMode === 'register' && (msg.includes('already') || msg.includes('existe') || msg.includes('registered'))) {
         const { error: e2 } = await signIn(authEmail, authPass)
         if (!e2) { setAuthLoading(false); return }
-        setAuthError('Esa cuenta ya existe. Verifica tu contrasena.')
+        setAuthError('Esa cuenta ya existe. Verifica tu contraseña.')
         setAuthLoading(false); return
       }
 
@@ -1564,7 +1564,7 @@ export default function App() {
 
       // Cualquier otro error → mensaje suave
       if (msg.includes('password') && msg.includes('6')) {
-        setAuthError('La contrasena necesita al menos 6 caracteres.')
+        setAuthError('La contraseña necesita al menos 6 caracteres.')
       } else if (msg.includes('email')) {
         setAuthError('Revisa que el correo este bien escrito.')
       } else {
@@ -1629,7 +1629,7 @@ export default function App() {
               style={{width:'100%',height:48,paddingLeft:14,fontSize:15,fontWeight:600,border:`1.5px solid ${T.border}`,borderRadius:14,outline:'none',color:T.navy,background:T.bg}}/>
           </div>
           <div>
-            <p style={{fontSize:12,fontWeight:700,color:T.muted,letterSpacing:'.06em',marginBottom:6}}>CONTRASENA</p>
+            <p style={{fontSize:12,fontWeight:700,color:T.muted,letterSpacing:'.06em',marginBottom:6}}>CONTRASEÑA</p>
             <div style={{position:'relative'}}>
               <input type={showPass?'text':'password'} value={authPass} onChange={e=>setAuthPass(e.target.value)} placeholder="Min. 6 caracteres"
                 onKeyDown={e=>e.key==='Enter'&&handleAuth()}
@@ -1650,13 +1650,13 @@ export default function App() {
             {authLoading ? FRASES_AUTH[Math.floor(Date.now()/2000)%FRASES_AUTH.length] : 'Entrar'}
           </Btn>
           <button onClick={resetPassword} type="button" style={{background:'none',border:'none',color:T.muted,fontSize:13,fontWeight:600,cursor:'pointer',width:'100%',textAlign:'center',marginTop:6}}>
-            ¿Olvidaste tu contrasena?
+            ¿Olvidaste tu contraseña?
           </button>
         </div>
       </Card>
 
       <p style={{fontSize:12,color:T.muted,textAlign:'center',marginTop:8,lineHeight:1.5}}>
-        Escribe tu correo y contrasena. Si no tienes cuenta, se crea automaticamente.
+        Escribe tu correo y contraseña. Si no tienes cuenta, se crea automaticamente.
       </p>
     </div>
   )
@@ -2207,35 +2207,47 @@ export default function App() {
   if (pantalla === 'home') return (
     <div style={{minHeight:'100svh',background:T.bg,padding:'52px 20px 96px',overflowY:'auto'}}>
 
-      {/* Header */}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
+      {/* Header row 1: titulo + iconos */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
         <div>
-          <p style={{fontSize:11,color:T.muted,fontWeight:600,letterSpacing:'.05em'}}>{fDate(data.fecha).toUpperCase()}</p>
-          <h1 style={{fontSize:24,fontWeight:900,color:T.navy,letterSpacing:'-.03em',lineHeight:1.15,marginTop:2}}>Cashipop</h1>
+          <p style={{fontSize:10,color:T.muted,fontWeight:600,letterSpacing:'.06em'}}>{fDate(data.fecha).toUpperCase()}</p>
+          <h1 style={{fontSize:24,fontWeight:900,color:T.navy,letterSpacing:'-.03em',lineHeight:1.2,marginTop:3}}>Cashipop</h1>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:6}}>
-          {/* Tasa pill */}
-          <div style={{display:'flex',alignItems:'center',gap:3,background:T.amberLight,border:`1px solid ${T.brandGold}33`,borderRadius:20,padding:'4px 10px 4px 8px'}}>
-            <Edit3 size={10} color={T.muted} strokeWidth={1.75}/>
-            <span style={{fontSize:10,fontWeight:700,color:T.brand}}>Bs</span>
-            <input type="text" inputMode="decimal" data-tasa-input
-              value={tasaTemp}
-              onChange={e => onTasaInput(e.target.value)}
-              onBlur={onTasaBlur}
-              onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-              style={{width:58,height:22,fontSize:15,fontWeight:900,color:T.brand,background:'transparent',border:'none',padding:0,outline:'none',textAlign:'right'}}
-            />
-            <a href="https://www.instagram.com/bcv.org.ve/" target="_blank" rel="noopener noreferrer" style={{display:'flex',marginLeft:2,WebkitTapHighlightColor:'transparent'}}>
-              <ChevronRight size={11} color={T.muted} strokeWidth={2}/>
-            </a>
-          </div>
-          {/* WA */}
+        <div style={{display:'flex',alignItems:'center',gap:5}}>
           <WaBtn onClick={()=>enviarResumen()}/>
-          {/* Logout */}
-          <button onClick={handleLogout} style={{width:30,height:30,borderRadius:8,border:'none',background:'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
-            <LogOut size={15} color={T.muted} strokeWidth={1.75}/>
+          <button onClick={handleLogout} style={{width:28,height:28,borderRadius:8,border:`1px solid ${T.border}`,background:'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
+            <LogOut size={13} color={T.muted} strokeWidth={1.75}/>
           </button>
         </div>
+      </div>
+
+      {/* Header row 2: tasa protagonista */}
+      <div onClick={()=>{const el=document.querySelector('[data-tasa-input]');el?.focus();el?.select()}}
+        style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:T.amberLight,border:`2px solid ${T.brandGold}55`,borderRadius:18,padding:'10px 14px',marginBottom:18,cursor:'pointer'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <div style={{width:32,height:32,borderRadius:10,background:T.brandGold+'22',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <Edit3 size={15} color={T.brandGold} strokeWidth={1.75}/>
+          </div>
+          <div>
+            <p style={{fontSize:9,fontWeight:700,color:T.brandGold,letterSpacing:'.08em'}}>TASA BCV</p>
+            <div style={{display:'flex',alignItems:'baseline',gap:4}}>
+              <span style={{fontSize:13,fontWeight:700,color:T.brand}}>Bs</span>
+              <input type="text" inputMode="decimal" data-tasa-input
+                value={tasaTemp}
+                onChange={e => onTasaInput(e.target.value)}
+                onBlur={onTasaBlur}
+                onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                onClick={e => e.stopPropagation()}
+                style={{width:90,fontSize:22,fontWeight:900,color:T.brand,background:'transparent',border:'none',padding:0,outline:'none'}}
+              />
+            </div>
+          </div>
+        </div>
+        <a href="https://www.instagram.com/bcv.org.ve/" target="_blank" rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          style={{fontSize:10,fontWeight:700,color:T.muted,textDecoration:'none',display:'flex',alignItems:'center',gap:3}}>
+          BCV <ChevronRight size={10} color={T.muted} strokeWidth={2}/>
+        </a>
       </div>
 
       {/* Tarjeta neto — gradiente oscuro */}
