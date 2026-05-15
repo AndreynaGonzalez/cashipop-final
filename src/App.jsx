@@ -115,7 +115,16 @@ function dataVacia(tasa = 481.21) {
 }
 
 // ─── BCV ─────────────────────────────────────────────────────────────────────
-// fetchTasaBCV eliminado — tasa es 100% manual con link a Instagram BCV
+// Fetch tasa BCV — background, non-blocking, 2s timeout
+async function fetchTasaBCV() {
+  try {
+    const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', { signal: AbortSignal.timeout(2000) })
+    const json = await res.json()
+    const v = parseFloat(json.promedio)
+    if (v > 10 && v < 9999) return Math.round(v * 100) / 100
+  } catch {}
+  return null
+}
 
 // ─── OCR con Gemini via OpenRouter ────────────────────────────────────────────
 const OCR_SYSTEM = `Eres un lector de libretas de cierre de caja para Cashipop.
@@ -881,6 +890,20 @@ export default function App() {
       setTasaTemp(String(tasaCache))
     }
     setPantalla('home')
+
+    // Auto-fetch tasa en background (no bloquea la app)
+    const tasaTs = (() => { try { return JSON.parse(localStorage.getItem('CP_TASA'))?.ts || 0 } catch { return 0 } })()
+    const tasaEdad = Date.now() - tasaTs
+    if (tasaEdad > 2 * 60 * 60 * 1000) { // > 2 horas
+      fetchTasaBCV().then(t => {
+        if (t) {
+          console.log(`Tasa auto-actualizada: Bs ${t}`)
+          setTasaTemp(String(t))
+          localStorage.setItem('CP_TASA', JSON.stringify({ v: t, ts: Date.now() }))
+          setData(prev => { if (!prev) return prev; const n = { ...prev, tasa: t }; guardarData(n); return n })
+        }
+      })
+    }
   }, [])
 
   // ── Tasa: manual-first, siempre editable ──
@@ -2565,6 +2588,13 @@ export default function App() {
           </div>
         </div>
 
+        {/* Tasa actual — editable */}
+        <div onClick={()=>{const el=document.querySelector('[data-tasa-input]');if(el){el.focus();el.select()}else go('home')}} style={{display:'flex',alignItems:'center',gap:6,marginBottom:16,cursor:'pointer'}}>
+          <Edit3 size={11} color={T.muted} strokeWidth={1.75}/>
+          <span style={{fontSize:12,color:T.muted,fontWeight:600}}>Tasa: 1 USD = Bs {data.tasa}</span>
+          <a href="https://www.instagram.com/bcv.org.ve/" target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:10,color:T.brandGold,fontWeight:700,textDecoration:'none',marginLeft:4}}>BCV</a>
+        </div>
+
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:22}}>
           <Btn onClick={()=>{setGasto(g=>({...g,fecha:''}));go('nuevoGasto')}} bg={T.forest} full icon={Plus} style={{padding:'15px',fontSize:13}}>
             Gasto de hoy
@@ -2876,7 +2906,13 @@ export default function App() {
 
     return (
       <div style={{minHeight:'100svh',background:T.bg,padding:'52px 20px 96px',overflowY:'auto'}}>
-        <h2 style={{fontSize:22,fontWeight:800,color:T.navy,letterSpacing:'-.025em',marginBottom:20}}>Métricas</h2>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+          <h2 style={{fontSize:22,fontWeight:800,color:T.navy,letterSpacing:'-.025em'}}>Métricas</h2>
+          <div onClick={()=>{const el=document.querySelector('[data-tasa-input]');if(el){el.focus();el.select()}else go('home')}} style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',background:T.amberLight,border:`1px solid ${T.brandGold}33`,borderRadius:10,padding:'4px 10px'}}>
+            <Edit3 size={10} color={T.muted} strokeWidth={1.75}/>
+            <span style={{fontSize:11,fontWeight:700,color:T.brand}}>Bs {data.tasa}</span>
+          </div>
+        </div>
 
         {/* ── Filtro de periodo ── */}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:22}}>
