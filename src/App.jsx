@@ -406,11 +406,12 @@ function parsearVozMultiple(texto, tasa) {
 const OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_KEY || ''
 const SYSTEM_PROMPT = 'Contador Cashipop. Tasa: 481.21. ESTO ES UN GASTO/EGRESO, nunca un ingreso. Si dice Bs, divide entre tasa y redondea a 2 decimales. Si dice $, mantiene. Numeros redondos se quedan redondos. Capitaliza cada palabra del concepto. Si el monto original era en Bs, incluyelo en "bs". Responde solo JSON: [{"c":"Concepto","m":0.00,"bs":0}] donde "bs" es el monto original en bolivares (0 si era en dolares).'
 
-const FACTURA_SYSTEM = `Eres un extractor de gastos/egresos para el restaurante Cashipop.
-La foto es una FACTURA DE PROVEEDOR o TICKET DE COMPRA. Esto es siempre un GASTO, nunca un ingreso.
+const FACTURA_SYSTEM = `Eres un extractor de gastos/egresos para Cashipop.
+La foto es una FACTURA o TICKET DE COMPRA. Siempre es un GASTO.
 Extrae cada item o el total. Tasa: 481.21. Si el monto esta en Bs, divide entre la tasa.
 Capitaliza cada palabra. Responde SOLO JSON:
-[{"c":"Concepto","m":0.00,"bs":0}]
+{"fecha":"","items":[{"c":"Concepto","m":0.00,"bs":0}]}
+- "fecha" = fecha del ticket en formato YYYY-MM-DD (si se ve). Dejar "" si no se detecta.
 - "c" = concepto/descripcion del gasto
 - "m" = monto en USD (si era Bs, ya dividido entre tasa)
 - "bs" = monto original en Bs (0 si era en dolares)
@@ -487,10 +488,19 @@ async function procesarFotoComoGasto(file, tasa) {
   }
   const json = await resp.json()
   if (json.error) throw new Error(json.error.message || JSON.stringify(json.error))
-  const raw = json.choices?.[0]?.message?.content || '[]'
+  const raw = json.choices?.[0]?.message?.content || '{}'
   console.log('Factura IA response:', raw)
-  const match = raw.match(/\[[\s\S]*\]/)
-  return match ? JSON.parse(match[0]) : []
+  // Soportar formato nuevo {fecha, items} y viejo [items]
+  const objMatch = raw.match(/\{[\s\S]*\}/)
+  if (objMatch) {
+    try {
+      const obj = JSON.parse(objMatch[0])
+      if (obj.items) return { fecha: obj.fecha || '', items: obj.items }
+      return { fecha: '', items: Array.isArray(obj) ? obj : [obj] }
+    } catch {}
+  }
+  const arrMatch = raw.match(/\[[\s\S]*\]/)
+  return { fecha: '', items: arrMatch ? JSON.parse(arrMatch[0]) : [] }
 }
 
 // ─── Formato ──────────────────────────────────────────────────────────────────
@@ -727,8 +737,7 @@ export default function App() {
   const [authMode,   setAuthMode]   = useState('login') // 'login' | 'register'
   const [authError,  setAuthError]  = useState('')
   const [authLoading,setAuthLoading]= useState(false)
-  const [showPass,      setShowPass]      = useState(false)
-  const [showFechaGasto,setShowFechaGasto]= useState(false)
+  const [showPass,   setShowPass]   = useState(false)
   const [pantalla,   setPantalla]   = useState('home')
   const [data,       setData]       = useState(null)
   const [confetti,   setConfetti]   = useState(false)
@@ -910,23 +919,25 @@ export default function App() {
     const esAnterior = fechaGasto !== getVzlaDate()
     _commitGasto(gasto)
     setGasto({ concepto: '', monto: '', moneda: 'BS', categoria: 'insumos', fecha: '' })
-    setShowFechaGasto(false)
     go(esAnterior ? 'historial' : 'gastos')
     showToast(esAnterior ? `¡Listo! Gasto registrado en ${fDate(fechaGasto)}.` : '¡Listo! Gasto anotado correctamente.', 3000)
   }
 
   function commitPendGastos() {
-    const fecha = getVzlaDate()
+    const fechaDefault = getVzlaDate()
     let d = data
     const toInsert = []
+    let hayAnterior = false
     for (const g of pendGastos) {
       const concepto = capitalizar(g.concepto)
       const montoUSD = redondear(n(g.monto))
       if (montoUSD <= 0) continue
-      const entry = { ...g, concepto, monto: montoUSD, id: Date.now() + Math.random() }
-      d = { ...d, gastos: [entry, ...d.gastos] }
+      const fechaItem = g.fecha || fechaDefault
+      if (fechaItem !== fechaDefault) hayAnterior = true
+      const entry = { ...g, concepto, monto: montoUSD, fecha: fechaItem, id: Date.now() + Math.random() }
+      if (fechaItem === fechaDefault) d = { ...d, gastos: [entry, ...d.gastos] }
       toInsert.push({
-        fecha,
+        fecha: fechaItem,
         concepto,
         monto: montoUSD,
         moneda: 'USD',
@@ -939,7 +950,7 @@ export default function App() {
       const valid = rows.filter(Boolean)
       if (valid.length) setDbGastos(prev => [...valid, ...prev])
     })
-    setPendGastos([]); go('gastos')
+    setPendGastos([]); go(hayAnterior ? 'historial' : 'gastos')
     showToast(`¡Listo! ${toInsert.length} gasto${toInsert.length > 1 ? 's' : ''} anotado${toInsert.length > 1 ? 's' : ''}.`, 3000)
   }
 
@@ -1236,8 +1247,10 @@ export default function App() {
     go('procesando'); setProgOCR(10)
     try {
       setProgOCR(40)
-      const items = await procesarFotoComoGasto(file, data.tasa)
+      const result = await procesarFotoComoGasto(file, data.tasa)
       setProgOCR(100)
+      const items = result.items || []
+      const fechaTicket = result.fecha || ''
       if (items.length > 0) {
         const mapped = items.map((item, i) => ({
           concepto: capitalizar(item.c),
@@ -1245,11 +1258,26 @@ export default function App() {
           moneda: 'USD',
           bsOrig: item.bs && item.bs > 0 ? Math.round(item.bs) : null,
           categoria: 'insumos',
+          fecha: gasto.fecha || '', // heredar fecha si viene del flujo anterior
           tipo: 'gasto',
           id: Date.now() + i + Math.random(),
         }))
         setPendGastos(mapped); go('confirmarVoz')
         showToast(`${mapped.length} gasto(s) detectado(s)`)
+
+        // Si la fecha del ticket es anterior a hoy y no viene del flujo "anterior", preguntar
+        if (fechaTicket && fechaTicket < getVzlaDate() && !gasto.fecha) {
+          setTimeout(() => {
+            setConfirm({
+              title: '¿Fecha diferente detectada?',
+              msg: `Este ticket es del ${fDate(fechaTicket)}. ¿Deseas guardarlo en esa fecha para tu balance?`,
+              yesLabel: `Guardar en ${fDate(fechaTicket)}`,
+              noLabel: 'Mantener fecha de hoy',
+              yesColor: T.brandGold,
+              onYes: () => { setPendGastos(prev => prev.map(g => ({ ...g, fecha: fechaTicket }))); setConfirm(null); showToast(`Fecha cambiada a ${fDate(fechaTicket)}`) },
+            })
+          }, 500)
+        }
       } else {
         showToast('No pude extraer gastos de la foto')
         go('nuevoGasto')
@@ -1257,8 +1285,8 @@ export default function App() {
     } catch (err) {
       console.error('Error escaneando factura:', err)
       const msg = err?.message || String(err)
-      if (msg.includes('402')) showToast('Sin creditos en OpenRouter.')
-      else if (msg.includes('401')) showToast('API key invalida.')
+      if (msg.includes('402')) showToast('Sin créditos en OpenRouter.')
+      else if (msg.includes('401')) showToast('API key inválida.')
       else showToast(`Error: ${msg.slice(0, 60)}`)
       go('nuevoGasto')
     }
@@ -2142,9 +2170,39 @@ export default function App() {
   // ══════════════════════════════════════════════════════════
   // NUEVO GASTO (pantalla interior)
   // ══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════
+  // SELECTOR DE FECHA PARA GASTO ANTERIOR
+  // ══════════════════════════════════════════════════════════
+  if (pantalla === 'gastoAnteriorFecha') return (
+    <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 40px',overflowY:'auto'}}>
+      <InnerHeader title="Gasto anterior" onBack={()=>go('gastos')}/>
+      <Card style={{padding:'28px 22px',textAlign:'center',marginBottom:24}}>
+        <Calendar size={36} color={T.brandGold} strokeWidth={1.5} style={{margin:'0 auto 16px'}}/>
+        <p style={{fontSize:17,fontWeight:800,color:T.navy,marginBottom:6}}>¿De qué fecha es el gasto?</p>
+        <p style={{fontSize:13,color:T.sub,marginBottom:20,lineHeight:1.5}}>Selecciona el día para que el registro quede en la fecha correcta</p>
+        <input type="date" value={gasto.fecha || ''} max={getVzlaDate()}
+          onChange={e => setGasto(g => ({ ...g, fecha: e.target.value }))}
+          style={{width:'100%',height:50,fontSize:17,fontWeight:700,color:T.brand,background:T.amberLight,border:`2px solid ${T.brandGold}`,borderRadius:14,padding:'0 16px',outline:'none',textAlign:'center'}}
+        />
+      </Card>
+      <Btn onClick={()=>{if(!gasto.fecha){showToast('Selecciona una fecha');return};go('nuevoGasto')}} bg={T.brand} full icon={ChevronRight}
+        style={{padding:'16px',fontSize:15}} disabled={!gasto.fecha}>
+        Continuar
+      </Btn>
+    </div>
+  )
+
   if (pantalla === 'nuevoGasto') return (
     <div style={{minHeight:'100svh',background:T.bg,padding:'32px 20px 40px',overflowY:'auto'}}>
-      <InnerHeader title="Nuevo Gasto" onBack={()=>go('gastos')}/>
+      <InnerHeader title={gasto.fecha ? `Gasto del ${fDate(gasto.fecha)}` : 'Nuevo Gasto'} onBack={()=>{setGasto(g=>({...g,fecha:''}));go('gastos')}}/>
+
+      {/* Banner de fecha anterior */}
+      {gasto.fecha && gasto.fecha !== getVzlaDate() && (
+        <div style={{background:T.amberLight,border:`1.5px solid ${T.brandGold}44`,borderRadius:14,padding:'10px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}>
+          <Calendar size={16} color={T.brandGold} strokeWidth={1.75}/>
+          <p style={{fontSize:13,fontWeight:700,color:T.brand}}>Registrando gasto para el {fDate(gasto.fecha)}</p>
+        </div>
+      )}
 
       {/* Dictado múltiple */}
       <Card style={{marginBottom:20,background:campoVoz==='g:multiple'?'#3D2539':procesandoVoz?T.cobaltLight:transcriptFinal?T.forestLight:T.cobaltLight,border:`1px solid ${campoVoz==='g:multiple'?'rgba(255,255,255,0.1)':T.cobalt}22`,transition:'all .3s'}}>
@@ -2266,31 +2324,6 @@ export default function App() {
       </Card>
 
       <Btn onClick={()=>agregarGasto(false)} bg={T.forest} full icon={CheckCircle} style={{padding:'16px',fontSize:15}}>Guardar Gasto</Btn>
-
-      {/* Toggle de gasto anterior */}
-      {!showFechaGasto ? (
-        <button onClick={()=>setShowFechaGasto(true)} style={{background:'none',border:'none',width:'100%',padding:'16px 0',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6,WebkitTapHighlightColor:'transparent'}}>
-          <Calendar size={14} color={T.muted} strokeWidth={1.75}/>
-          <span style={{fontSize:13,color:T.muted,fontWeight:600}}>¿Olvidaste registrar un gasto anterior?</span>
-        </button>
-      ) : (
-        <Card style={{marginTop:14,padding:'16px',background:T.amberLight,border:`1.5px solid ${T.brandGold}33`}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-            <p style={{fontSize:12,fontWeight:700,color:T.brandGold,letterSpacing:'.06em'}}>REGISTRAR GASTO ANTERIOR</p>
-            <button onClick={()=>{setShowFechaGasto(false);setGasto(g=>({...g,fecha:''}))}} style={{background:'none',border:'none',cursor:'pointer',padding:0}}>
-              <X size={16} color={T.muted} strokeWidth={1.75}/>
-            </button>
-          </div>
-          <p style={{fontSize:12,color:T.sub,marginBottom:10,lineHeight:1.4}}>Seleccioná la fecha del gasto. Los campos de arriba se usarán para este registro.</p>
-          <input type="date" value={gasto.fecha || getVzlaDate()} max={getVzlaDate()}
-            onChange={e => setGasto(g => ({ ...g, fecha: e.target.value }))}
-            style={{width:'100%',height:42,fontSize:15,fontWeight:700,color:T.brand,background:T.surface,border:`1.5px solid ${T.brandGold}`,borderRadius:12,padding:'0 14px',outline:'none'}}
-          />
-          {gasto.fecha && gasto.fecha !== getVzlaDate() && (
-            <p style={{fontSize:12,fontWeight:600,color:T.brandGold,marginTop:8}}>El gasto se registrará en {fDate(gasto.fecha)}</p>
-          )}
-        </Card>
-      )}
 
       <Confirm title={confirm?.title} msg={confirm?.msg} onYes={confirm?.onYes} onNo={()=>setConfirm(null)} yesLabel={confirm?.yesLabel} noLabel={confirm?.noLabel} yesColor={confirm?.yesColor}>{confirm?.body}</Confirm>
       <Toast msg={toast}/>
@@ -2470,9 +2503,14 @@ export default function App() {
           </div>
         </div>
 
-        <Btn onClick={()=>go('nuevoGasto')} bg={T.cobalt} full icon={Plus} style={{marginBottom:22,padding:'15px',fontSize:14}}>
-          Agregar Gasto
-        </Btn>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:22}}>
+          <Btn onClick={()=>{setGasto(g=>({...g,fecha:''}));go('nuevoGasto')}} bg={T.forest} full icon={Plus} style={{padding:'15px',fontSize:13}}>
+            Gasto de hoy
+          </Btn>
+          <Btn onClick={()=>go('gastoAnteriorFecha')} bg={T.brandGold} color={T.brand} full icon={Calendar} style={{padding:'15px',fontSize:13}}>
+            Gasto anterior
+          </Btn>
+        </div>
 
         {porCat.length===0?(
           <Card style={{textAlign:'center',padding:44,borderRadius:32}}>
