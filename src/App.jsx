@@ -738,6 +738,7 @@ export default function App() {
   const [authError,  setAuthError]  = useState('')
   const [authLoading,setAuthLoading]= useState(false)
   const [showPass,   setShowPass]   = useState(false)
+  const [metPeriodo, setMetPeriodo] = useState('semana') // 'semana' | 'mes' | 'año'
   const [pantalla,   setPantalla]   = useState('home')
   const [data,       setData]       = useState(null)
   const [confetti,   setConfetti]   = useState(false)
@@ -2773,19 +2774,160 @@ export default function App() {
   // METRICAS (tab)
   // ══════════════════════════════════════════════════════════
   if (pantalla === 'metricas') {
-    const PIE_COLORS = ['#FFB752','#5E405B','#2D6A4F','#FF7752','#7C3AED','#1D4ED8','#BE185D','#C2410C','#374151','#0891B2']
+    const BAR_COLORS = ['#FFB752','#5E405B','#2D6A4F','#FF7752','#7C3AED','#1D4ED8','#BE185D','#C2410C','#374151','#0891B2']
     const hoyStr = hoy()
     const tasa = data.tasa
 
-    // ── Totales globales ──
-    const totalIngDB = redondear(dbIngresos.reduce((a, i) => a + toUSD(i.monto, i.moneda, tasa), 0))
-    const totalGasDB = redondear(dbGastos.reduce((a, g) => a + toUSD(g.monto, g.moneda, tasa), 0))
-    const balanceReal = redondear(totalIngDB - totalGasDB)
-
-    // ── Semana actual: lunes a hoy ──
+    // ── Calcular rango de fechas segun periodo ──
     const ahora = new Date()
-    const lunes = new Date(ahora); lunes.setDate(ahora.getDate() - ((ahora.getDay() + 6) % 7))
-    const lunesStr = toVzlaDateStr(lunes)
+    let fechaDesde = ''
+    if (metPeriodo === 'semana') {
+      const lunes = new Date(ahora); lunes.setDate(ahora.getDate() - ((ahora.getDay() + 6) % 7))
+      fechaDesde = toVzlaDateStr(lunes)
+    } else if (metPeriodo === 'mes') {
+      fechaDesde = hoyStr.slice(0, 7) + '-01'
+    } else {
+      fechaDesde = hoyStr.slice(0, 4) + '-01-01'
+    }
+
+    // Filtrar datos por periodo
+    const gastosPeriodo = dbGastos.filter(g => g.fecha >= fechaDesde && g.fecha <= hoyStr)
+    const ingresosPeriodo = dbIngresos.filter(i => i.fecha >= fechaDesde && i.fecha <= hoyStr)
+
+    const totalIng = redondear(ingresosPeriodo.reduce((a, i) => a + toUSD(i.monto, i.moneda, tasa), 0))
+    const totalGas = redondear(gastosPeriodo.reduce((a, g) => a + toUSD(g.monto, g.moneda, tasa), 0))
+    const balance = redondear(totalIng - totalGas)
+
+    // ── Gastos por categoria ──
+    const catMap = {}
+    for (const g of gastosPeriodo) {
+      const cat = g.categoria || 'Varios'
+      catMap[cat] = (catMap[cat] || 0) + toUSD(g.monto, g.moneda, tasa)
+    }
+    const catList = Object.entries(catMap)
+      .map(([name, value]) => ({ name, value: redondear(value) }))
+      .filter(d => d.value > 0)
+      .sort((a, b) => b.value - a.value)
+
+    // ── Día de mayor gasto ──
+    const diaMap = {}
+    for (const g of gastosPeriodo) {
+      diaMap[g.fecha] = (diaMap[g.fecha] || 0) + toUSD(g.monto, g.moneda, tasa)
+    }
+    let maxDiaFecha = '', maxDiaVal = 0
+    for (const [f, v] of Object.entries(diaMap)) {
+      if (v > maxDiaVal) { maxDiaFecha = f; maxDiaVal = v }
+    }
+    const diasNombreFull = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado']
+    const maxDiaNombre = maxDiaFecha ? diasNombreFull[new Date(maxDiaFecha + 'T12:00:00').getDay()] : ''
+
+    // ── Etiqueta del periodo ──
+    const periodoLabel = metPeriodo === 'semana' ? 'esta semana' : metPeriodo === 'mes' ? 'este mes' : 'este año'
+
+    return (
+      <div style={{minHeight:'100svh',background:T.bg,padding:'52px 20px 96px',overflowY:'auto'}}>
+        <h2 style={{fontSize:22,fontWeight:800,color:T.navy,letterSpacing:'-.025em',marginBottom:20}}>Métricas</h2>
+
+        {/* ── Filtro de periodo ── */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:22}}>
+          {[['semana','Esta Semana'],['mes','Este Mes'],['año','Este Año']].map(([k,label])=>(
+            <button key={k} onClick={()=>setMetPeriodo(k)}
+              style={{padding:'11px 4px',borderRadius:14,border:`1.5px solid ${metPeriodo===k?T.brand:T.border}`,background:metPeriodo===k?T.cobaltLight:T.surface,cursor:'pointer',fontSize:13,fontWeight:metPeriodo===k?800:600,color:metPeriodo===k?T.brand:T.sub,WebkitTapHighlightColor:'transparent',transition:'all .15s'}}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── KPI: Balance Neto ── */}
+        <div style={{background:'linear-gradient(145deg,#3D2539,#5E405B)',borderRadius:24,padding:'24px 22px',marginBottom:14,boxShadow:'0 12px 40px rgba(94,64,91,0.15)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+            <TrendingUp size={16} color='rgba(255,255,255,0.5)' strokeWidth={1.75}/>
+            <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.5)',letterSpacing:'.08em'}}>BALANCE NETO {periodoLabel.toUpperCase()}</p>
+          </div>
+          <p style={{fontSize:36,fontWeight:900,color:balance>=0?'#6EE7B7':'#FCA5A5',letterSpacing:'-.035em',lineHeight:1}}>{fUSD(balance)}</p>
+          <p style={{fontSize:12,color:'rgba(255,255,255,0.35)',marginTop:8}}>Ingresos {fUSD(totalIng)} — Gastos {fUSD(totalGas)}</p>
+        </div>
+
+        {/* ── KPI Cards ── */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:20}}>
+          <Card style={{padding:'16px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+              <TrendingDown size={14} color={T.rose} strokeWidth={1.75}/>
+              <p style={{fontSize:9,fontWeight:700,color:T.rose,letterSpacing:'.06em'}}>TOTAL GASTADO</p>
+            </div>
+            <p style={{fontSize:22,fontWeight:900,color:T.navy}}>{fUSD(totalGas)}</p>
+            <p style={{fontSize:11,color:T.muted,marginTop:3}}>{gastosPeriodo.length} registro{gastosPeriodo.length!==1?'s':''}</p>
+          </Card>
+          <Card style={{padding:'16px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+              <Calendar size={14} color={T.brandGold} strokeWidth={1.75}/>
+              <p style={{fontSize:9,fontWeight:700,color:T.brandGold,letterSpacing:'.06em'}}>DÍA DE MAYOR GASTO</p>
+            </div>
+            {maxDiaFecha ? (
+              <>
+                <p style={{fontSize:16,fontWeight:800,color:T.navy}}>{maxDiaNombre}</p>
+                <p style={{fontSize:13,fontWeight:700,color:T.rose,marginTop:2}}>{fUSD(maxDiaVal)}</p>
+                <p style={{fontSize:10,color:T.muted,marginTop:2}}>{fDate(maxDiaFecha)}</p>
+              </>
+            ) : (
+              <p style={{fontSize:13,color:T.muted}}>Sin datos</p>
+            )}
+          </Card>
+        </div>
+
+        {/* ── Desglose por categoría ── */}
+        <Label>DESGLOSE DE GASTOS {periodoLabel.toUpperCase()}</Label>
+        {catList.length > 0 ? (
+          <Card style={{marginBottom:18,padding:'18px 20px'}}>
+            {catList.map((cat, i) => {
+              const pct = totalGas > 0 ? Math.round(cat.value / totalGas * 100) : 0
+              return (
+                <div key={cat.name} style={{marginBottom: i < catList.length-1 ? 16 : 0}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
+                    <span style={{fontSize:14,fontWeight:700,color:T.navy}}>{cat.name}</span>
+                    <div style={{display:'flex',alignItems:'baseline',gap:8}}>
+                      <span style={{fontSize:12,fontWeight:800,color:T.sub}}>{pct}%</span>
+                      <span style={{fontSize:14,fontWeight:800,color:T.rose}}>{fUSD(cat.value)}</span>
+                    </div>
+                  </div>
+                  <div style={{height:8,background:T.border,borderRadius:4,overflow:'hidden'}}>
+                    <div style={{height:'100%',width:`${pct}%`,background:BAR_COLORS[i % BAR_COLORS.length],borderRadius:4,transition:'width .3s'}}/>
+                  </div>
+                </div>
+              )
+            })}
+          </Card>
+        ) : (
+          <Card style={{textAlign:'center',padding:40,marginBottom:18}}>
+            <Receipt size={28} color={T.muted} strokeWidth={1.5} style={{margin:'0 auto'}}/>
+            <p style={{fontSize:14,fontWeight:700,color:T.navy,marginTop:12}}>Sin gastos {periodoLabel}</p>
+          </Card>
+        )}
+
+        {/* ── Mini stats ── */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+          <Card style={{padding:'12px 8px',textAlign:'center'}}>
+            <p style={{fontSize:9,fontWeight:700,color:T.muted,letterSpacing:'.06em'}}>INGRESOS</p>
+            <p style={{fontSize:16,fontWeight:900,color:T.forest,marginTop:3}}>{fUSD(totalIng)}</p>
+          </Card>
+          <Card style={{padding:'12px 8px',textAlign:'center'}}>
+            <p style={{fontSize:9,fontWeight:700,color:T.muted,letterSpacing:'.06em'}}>REGISTROS</p>
+            <p style={{fontSize:16,fontWeight:900,color:T.navy,marginTop:3}}>{gastosPeriodo.length + ingresosPeriodo.length}</p>
+          </Card>
+          <Card style={{padding:'12px 8px',textAlign:'center'}}>
+            <p style={{fontSize:9,fontWeight:700,color:T.muted,letterSpacing:'.06em'}}>CATEGORÍAS</p>
+            <p style={{fontSize:16,fontWeight:900,color:T.navy,marginTop:3}}>{catList.length}</p>
+          </Card>
+        </div>
+
+        <BottomNav pantalla={pantalla} go={go}/>
+        <Toast msg={toast}/>
+      </div>
+    )
+  }
+
+  // old metricas code removed
+  if (false) { const lunesStr = ''
     const ingSemana = redondear(dbIngresos.filter(i => i.fecha >= lunesStr && i.fecha <= hoyStr).reduce((a, i) => a + toUSD(i.monto, i.moneda, tasa), 0))
     const gasSemana = redondear(dbGastos.filter(g => g.fecha >= lunesStr && g.fecha <= hoyStr).reduce((a, g) => a + toUSD(g.monto, g.moneda, tasa), 0))
     const netoSemana = redondear(ingSemana - gasSemana)
