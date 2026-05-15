@@ -2798,11 +2798,11 @@ export default function App() {
     const totalGas = redondear(gastosPeriodo.reduce((a, g) => a + toUSD(g.monto, g.moneda, tasa), 0))
     const balance = redondear(totalIng - totalGas)
 
-    // ── Gastos por categoria ──
+    // ── Gastos por categoría (normalizado para evitar duplicados) ──
     const catMap = {}
     for (const g of gastosPeriodo) {
-      const cat = g.categoria || 'Varios'
-      catMap[cat] = (catMap[cat] || 0) + toUSD(g.monto, g.moneda, tasa)
+      const key = (g.categoria || 'varios').trim().toLowerCase()
+      catMap[key] = (catMap[key] || 0) + toUSD(g.monto, g.moneda, tasa)
     }
     const catList = Object.entries(catMap)
       .map(([name, value]) => ({ name, value: redondear(value) }))
