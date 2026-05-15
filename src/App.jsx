@@ -2029,7 +2029,7 @@ export default function App() {
                   style={{flex:1,fontSize:16,fontWeight:700,color:T.brand,border:`1.5px solid ${T.brandGold}`,borderRadius:10,padding:'8px 12px',outline:'none',background:'#FFF9F0',marginRight:10}}
                 />
               ) : (
-                <p style={{fontSize:16,fontWeight:800,color:T.brand,flex:1}}>{g.concepto}</p>
+                <p style={{fontSize:16,fontWeight:800,color:T.brand,flex:1,textTransform:'capitalize'}}>{g.concepto}</p>
               )}
 
               <div style={{display:'flex',gap:6,flexShrink:0,marginTop:2}}>
@@ -2314,7 +2314,7 @@ export default function App() {
       <Card style={{marginBottom:16}}>
         <div style={{display:'flex',gap:8}}>
           <input type="text" value={gasto.concepto} onChange={e=>setGasto(g=>({...g,concepto:e.target.value}))} placeholder="ej: Queso Omar, Harina PAN..."
-            style={{flex:1,height:48,paddingLeft:14,fontSize:15,fontWeight:600,border:`1.5px solid ${T.border}`,borderRadius:12,outline:'none',color:T.navy,background:T.bg}}/>
+            style={{flex:1,height:48,paddingLeft:14,fontSize:15,fontWeight:600,border:`1.5px solid ${T.border}`,borderRadius:12,outline:'none',color:T.navy,background:T.bg,textTransform:'capitalize'}}/>
           <button onClick={()=>iniciarVozSimple('g:concepto')} style={{width:48,height:48,borderRadius:12,border:'none',flexShrink:0,background:campoVoz==='g:concepto'?T.roseLight:T.cobaltLight,color:campoVoz==='g:concepto'?T.rose:T.cobalt,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
             {campoVoz==='g:concepto'?<MicOff size={17} strokeWidth={1.75}/>:<Mic size={17} strokeWidth={1.75}/>}
           </button>
@@ -2479,8 +2479,8 @@ export default function App() {
                 {i > 0 && <Sep/>}
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                   <div style={{flex:1,minWidth:0}}>
-                    <p style={{fontSize:14,fontWeight:700,color:T.navy,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.concepto}</p>
-                    <p style={{fontSize:11,color:T.muted,marginTop:2}}>{g.categoria}</p>
+                    <p style={{fontSize:14,fontWeight:700,color:T.navy,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textTransform:'capitalize'}}>{g.concepto}</p>
+                    <p style={{fontSize:11,color:T.muted,marginTop:2,textTransform:'capitalize'}}>{g.categoria}</p>
                   </div>
                   <span style={{fontSize:15,fontWeight:800,color:T.rose,marginRight:10}}>{g.moneda==='USD'?fUSD(g.monto):fBS(g.monto)}</span>
                   <button onClick={()=>eliminarGasto(g)} style={{background:T.roseLight,border:'none',borderRadius:10,width:32,height:32,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,WebkitTapHighlightColor:'transparent'}}>
@@ -2542,7 +2542,7 @@ export default function App() {
                   {i>0&&<Sep/>}
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                     <div>
-                      <p style={{fontSize:15,fontWeight:700,color:T.navy}}>{g.concepto}</p>
+                      <p style={{fontSize:15,fontWeight:700,color:T.navy,textTransform:'capitalize'}}>{g.concepto}</p>
                       <p style={{fontSize:12,color:T.muted,marginTop:2}}>{g.moneda==='USD'?`${fUSD(g.monto)} = ${fBS(n(g.monto)*data.tasa)}`:fBS(g.monto)}</p>
                     </div>
                     <button onClick={()=>eliminarGasto(g)} style={{background:T.roseLight,border:'none',borderRadius:10,width:34,height:34,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
@@ -2712,8 +2712,8 @@ export default function App() {
                   {i > 0 && <Sep/>}
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
                     <div style={{flex:1,minWidth:0}}>
-                      <p style={{fontSize:14,fontWeight:600,color:T.navy}}>{g.concepto}</p>
-                      <p style={{fontSize:12,fontWeight:600,color:T.muted,marginTop:2}}>{g.categoria}</p>
+                      <p style={{fontSize:14,fontWeight:600,color:T.navy,textTransform:'capitalize'}}>{g.concepto}</p>
+                      <p style={{fontSize:12,fontWeight:600,color:T.muted,marginTop:2,textTransform:'capitalize'}}>{g.categoria}</p>
                     </div>
                     <span style={{fontSize:15,fontWeight:800,color:T.rose,flexShrink:0}}>{fUSD(toUSD(g.monto, g.moneda, data.tasa))}</span>
                     <button onClick={()=>eliminarGastoDB(g)} style={{background:T.roseLight,border:'none',borderRadius:9,width:30,height:30,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,WebkitTapHighlightColor:'transparent'}}>
@@ -2884,7 +2884,7 @@ export default function App() {
               return (
                 <div key={cat.name} style={{marginBottom: i < catList.length-1 ? 16 : 0}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
-                    <span style={{fontSize:14,fontWeight:700,color:T.navy}}>{cat.name}</span>
+                    <span style={{fontSize:14,fontWeight:700,color:T.navy,textTransform:'capitalize'}}>{cat.name}</span>
                     <div style={{display:'flex',alignItems:'baseline',gap:8}}>
                       <span style={{fontSize:12,fontWeight:800,color:T.sub}}>{pct}%</span>
                       <span style={{fontSize:14,fontWeight:800,color:T.rose}}>{fUSD(cat.value)}</span>
@@ -3225,7 +3225,7 @@ export default function App() {
                     {i > 0 && <Sep/>}
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                       <div>
-                        <p style={{fontSize:14,fontWeight:600,color:T.navy}}>{ig.concepto}</p>
+                        <p style={{fontSize:14,fontWeight:600,color:T.navy,textTransform:'capitalize'}}>{ig.concepto}</p>
                         {ig.moneda === 'BS' && <p style={{fontSize:11,color:T.muted,marginTop:2}}>{fBS(ig.monto)}</p>}
                       </div>
                       <p style={{fontSize:14,fontWeight:800,color:T.forest}}>{fUSD(toUSD(ig.monto, ig.moneda, data.tasa))}</p>
@@ -3244,7 +3244,7 @@ export default function App() {
                     {i > 0 && <Sep/>}
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
                       <div style={{flex:1,minWidth:0}}>
-                        <p style={{fontSize:14,fontWeight:600,color:T.navy}}>{g.concepto}</p>
+                        <p style={{fontSize:14,fontWeight:600,color:T.navy,textTransform:'capitalize'}}>{g.concepto}</p>
                         {g.moneda === 'BS' && <p style={{fontSize:11,color:T.muted,marginTop:2}}>{fBS(g.monto)}</p>}
                       </div>
                       <span style={{fontSize:14,fontWeight:800,color:T.rose,flexShrink:0}}>{fUSD(toUSD(g.monto, g.moneda, data.tasa))}</span>
@@ -3330,7 +3330,7 @@ export default function App() {
                           <span style={{fontSize:10,fontWeight:700,color:item._tipo==='gasto'?T.rose:T.forest,background:item._tipo==='gasto'?T.roseLight:T.forestLight,padding:'2px 8px',borderRadius:6}}>{item._tipo==='gasto'?'GASTO':'INGRESO'}</span>
                           <span style={{fontSize:11,color:T.muted}}>{item.fecha ? fDate(item.fecha) : ''}</span>
                         </div>
-                        <p style={{fontSize:15,fontWeight:700,color:T.navy,marginBottom:3}}>{item.concepto || 'Sin concepto'}</p>
+                        <p style={{fontSize:15,fontWeight:700,color:T.navy,marginBottom:3,textTransform:'capitalize'}}>{item.concepto || 'Sin concepto'}</p>
                         <p style={{fontSize:13,fontWeight:800,color:T.rose}}>{fUSD(toUSD(item.monto || 0, item.moneda || 'USD', data.tasa))}</p>
                         <p style={{fontSize:11,color:T.muted,marginTop:4}}>Se elimina en {diasRestantes} dia{diasRestantes!==1?'s':''}</p>
                       </div>
