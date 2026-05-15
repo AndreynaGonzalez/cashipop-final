@@ -503,6 +503,55 @@ async function procesarFotoComoGasto(file, tasa) {
   return { fecha: '', items: arrMatch ? JSON.parse(arrMatch[0]) : [] }
 }
 
+// ─── Agrupador fuzzy de conceptos ─────────────────────────────────────────────
+const SINONIMOS = {
+  carne:'carne',carnes:'carne',carnne:'carne',res:'carne',
+  pollo:'pollo',pollos:'pollo',
+  verdura:'verdura',verduras:'verdura',vegetales:'verdura',
+  queso:'queso',quesos:'queso',
+  harina:'harina',harinas:'harina',
+  viaje:'transporte',viajes:'transporte',flete:'transporte',taxi:'transporte',
+  delivery:'delivery',deliverys:'delivery',
+  sueldo:'sueldos',sueldos:'sueldos',salario:'sueldos',
+  servicio:'servicios',servicios:'servicios',
+  alquiler:'alquiler',arriendo:'alquiler',renta:'alquiler',
+  cafe:'café',café:'café',
+  hielo:'hielo',hielos:'hielo',
+  mercado:'mercado',supermercado:'mercado',mercancia:'mercado',mercancía:'mercado',
+  insumo:'insumos',insumos:'insumos',
+}
+
+function normConcepto(texto) {
+  const words = (texto || '').trim().toLowerCase().replace(/\s+/g,' ').split(' ')
+  // Buscar la primera palabra significativa en el diccionario
+  for (const w of words) {
+    if (SINONIMOS[w]) return SINONIMOS[w]
+    // Raíz de 4+ letras: buscar match parcial
+    if (w.length >= 4) {
+      const raiz = w.slice(0, 4)
+      for (const [k, v] of Object.entries(SINONIMOS)) {
+        if (k.slice(0, 4) === raiz) return v
+      }
+    }
+  }
+  // Sin match: devolver el texto limpio completo
+  return words.join(' ')
+}
+
+function agruparConceptos(gastos, tasa) {
+  const map = {}
+  for (const g of gastos) {
+    const key = normConcepto(g.concepto)
+    if (!map[key]) map[key] = { total: 0, count: 0 }
+    map[key].total += toUSD(g.monto, g.moneda, tasa)
+    map[key].count++
+  }
+  return Object.entries(map)
+    .map(([name, d]) => ({ name, value: redondear(d.total), count: d.count }))
+    .filter(d => d.value > 0)
+    .sort((a, b) => b.value - a.value)
+}
+
 // ─── Formato ──────────────────────────────────────────────────────────────────
 function formatMoney(v) {
   const raw = Number(v) || 0
@@ -2903,6 +2952,46 @@ export default function App() {
             <p style={{fontSize:14,fontWeight:700,color:T.navy,marginTop:12}}>Sin gastos {periodoLabel}</p>
           </Card>
         )}
+
+        {/* ── Top conceptos (agrupados por fuzzy match) ── */}
+        {(() => {
+          const conceptos = agruparConceptos(gastosPeriodo, tasa)
+          if (conceptos.length === 0) return null
+          const top = conceptos.slice(0, 5)
+          // Alerta inteligente
+          const insumosCat = catList.find(c => c.name === 'insumos')
+          const carneConcepto = conceptos.find(c => c.name === 'carne')
+          const alertaCarne = insumosCat && carneConcepto && insumosCat.value > 0 && (carneConcepto.value / insumosCat.value) > 0.25
+          return (
+            <>
+              <Label>TOP CONCEPTOS {periodoLabel.toUpperCase()}</Label>
+              <Card style={{marginBottom:14,padding:'16px 20px'}}>
+                {top.map((c, i) => (
+                  <div key={c.name} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:i<top.length-1?`1px solid ${T.border}`:'none'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{fontSize:12,fontWeight:800,color:T.muted,width:18}}>{i+1}.</span>
+                      <span style={{fontSize:14,fontWeight:700,color:T.navy,textTransform:'capitalize'}}>{c.name}</span>
+                    </div>
+                    <div style={{textAlign:'right'}}>
+                      <span style={{fontSize:14,fontWeight:800,color:T.rose}}>{fUSD(c.value)}</span>
+                      <span style={{fontSize:11,color:T.muted,marginLeft:6}}>{c.count}x</span>
+                    </div>
+                  </div>
+                ))}
+              </Card>
+              {alertaCarne && (
+                <Card style={{marginBottom:18,background:T.roseLight,border:`1px solid ${T.rose}22`,padding:'14px 18px'}}>
+                  <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
+                    <AlertCircle size={16} color={T.rose} strokeWidth={1.75} style={{marginTop:2,flexShrink:0}}/>
+                    <p style={{fontSize:13,fontWeight:600,color:T.navy,lineHeight:1.5}}>
+                      El gasto en carne representa el {Math.round(carneConcepto.value / insumosCat.value * 100)}% de tus insumos {periodoLabel}. Considera revisar proveedores o porciones.
+                    </p>
+                  </div>
+                </Card>
+              )}
+            </>
+          )
+        })()}
 
         {/* ── Mini stats ── */}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
