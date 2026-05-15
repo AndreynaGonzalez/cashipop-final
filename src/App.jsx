@@ -727,7 +727,8 @@ export default function App() {
   const [authMode,   setAuthMode]   = useState('login') // 'login' | 'register'
   const [authError,  setAuthError]  = useState('')
   const [authLoading,setAuthLoading]= useState(false)
-  const [showPass,   setShowPass]   = useState(false)
+  const [showPass,      setShowPass]      = useState(false)
+  const [showFechaGasto,setShowFechaGasto]= useState(false)
   const [pantalla,   setPantalla]   = useState('home')
   const [data,       setData]       = useState(null)
   const [confetti,   setConfetti]   = useState(false)
@@ -909,6 +910,7 @@ export default function App() {
     const esAnterior = fechaGasto !== getVzlaDate()
     _commitGasto(gasto)
     setGasto({ concepto: '', monto: '', moneda: 'BS', categoria: 'insumos', fecha: '' })
+    setShowFechaGasto(false)
     go(esAnterior ? 'historial' : 'gastos')
     showToast(esAnterior ? `¡Listo! Gasto registrado en ${fDate(fechaGasto)}.` : '¡Listo! Gasto anotado correctamente.', 3000)
   }
@@ -2229,21 +2231,6 @@ export default function App() {
         <div style={{flex:1,height:1,background:T.border}}/>
       </div>
 
-      {/* Selector de fecha */}
-      <Label>FECHA DEL GASTO</Label>
-      <Card style={{marginBottom:16,padding:'14px 16px'}}>
-        <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <Calendar size={16} color={gasto.fecha && gasto.fecha !== getVzlaDate() ? T.brandGold : T.muted} strokeWidth={1.75}/>
-          <input type="date" value={gasto.fecha || getVzlaDate()} max={getVzlaDate()}
-            onChange={e => setGasto(g => ({ ...g, fecha: e.target.value }))}
-            style={{flex:1,height:36,fontSize:14,fontWeight:600,color:T.navy,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:12,padding:'0 12px',outline:'none'}}
-          />
-          {gasto.fecha && gasto.fecha !== getVzlaDate() && (
-            <span style={{fontSize:10,fontWeight:700,color:T.brandGold,background:T.amberLight,padding:'3px 8px',borderRadius:8,whiteSpace:'nowrap'}}>Gasto anterior</span>
-          )}
-        </div>
-      </Card>
-
       <Label>CATEGORÍA</Label>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:20}}>
         {CATS.map(cat=>{const active=gasto.categoria===cat.id;return(
@@ -2279,6 +2266,32 @@ export default function App() {
       </Card>
 
       <Btn onClick={()=>agregarGasto(false)} bg={T.forest} full icon={CheckCircle} style={{padding:'16px',fontSize:15}}>Guardar Gasto</Btn>
+
+      {/* Toggle de gasto anterior */}
+      {!showFechaGasto ? (
+        <button onClick={()=>setShowFechaGasto(true)} style={{background:'none',border:'none',width:'100%',padding:'16px 0',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6,WebkitTapHighlightColor:'transparent'}}>
+          <Calendar size={14} color={T.muted} strokeWidth={1.75}/>
+          <span style={{fontSize:13,color:T.muted,fontWeight:600}}>¿Olvidaste registrar un gasto anterior?</span>
+        </button>
+      ) : (
+        <Card style={{marginTop:14,padding:'16px',background:T.amberLight,border:`1.5px solid ${T.brandGold}33`}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <p style={{fontSize:12,fontWeight:700,color:T.brandGold,letterSpacing:'.06em'}}>REGISTRAR GASTO ANTERIOR</p>
+            <button onClick={()=>{setShowFechaGasto(false);setGasto(g=>({...g,fecha:''}))}} style={{background:'none',border:'none',cursor:'pointer',padding:0}}>
+              <X size={16} color={T.muted} strokeWidth={1.75}/>
+            </button>
+          </div>
+          <p style={{fontSize:12,color:T.sub,marginBottom:10,lineHeight:1.4}}>Seleccioná la fecha del gasto. Los campos de arriba se usarán para este registro.</p>
+          <input type="date" value={gasto.fecha || getVzlaDate()} max={getVzlaDate()}
+            onChange={e => setGasto(g => ({ ...g, fecha: e.target.value }))}
+            style={{width:'100%',height:42,fontSize:15,fontWeight:700,color:T.brand,background:T.surface,border:`1.5px solid ${T.brandGold}`,borderRadius:12,padding:'0 14px',outline:'none'}}
+          />
+          {gasto.fecha && gasto.fecha !== getVzlaDate() && (
+            <p style={{fontSize:12,fontWeight:600,color:T.brandGold,marginTop:8}}>El gasto se registrará en {fDate(gasto.fecha)}</p>
+          )}
+        </Card>
+      )}
+
       <Confirm title={confirm?.title} msg={confirm?.msg} onYes={confirm?.onYes} onNo={()=>setConfirm(null)} yesLabel={confirm?.yesLabel} noLabel={confirm?.noLabel} yesColor={confirm?.yesColor}>{confirm?.body}</Confirm>
       <Toast msg={toast}/>
     </div>
