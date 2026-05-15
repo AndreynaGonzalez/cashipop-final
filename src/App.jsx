@@ -3037,15 +3037,15 @@ export default function App() {
                 </>
               )}
 
-              {/* Tu Aliado Andino — Coach desplegable */}
+              {/* Coach Financiero — desplegable */}
               {tips.length > 0 && (
                 <div onClick={()=>setShowCoach(!showCoach)} style={{background:'linear-gradient(135deg,#faf9fc,#f3effb)',border:`1px solid rgba(94,64,91,0.06)`,borderRadius:20,padding:'18px 20px',marginBottom:18,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                     <div style={{display:'flex',alignItems:'center',gap:10}}>
                       <span style={{fontSize:20}}>✨</span>
                       <div>
-                        <p style={{fontSize:15,fontWeight:800,color:T.navy}}>Tu Aliado Andino</p>
-                        <p style={{fontSize:12,color:T.muted,marginTop:2}}>{showCoach ? `${tips.length} sugerencia${tips.length>1?'s':''} para ti` : 'Toca aquí para ver cómo hacer brillar tu negocio'}</p>
+                        <p style={{fontSize:15,fontWeight:800,color:T.navy}}>Coach Financiero</p>
+                        <p style={{fontSize:12,color:T.muted,marginTop:2}}>{showCoach ? `${tips.length} consejo${tips.length>1?'s':''} para tu negocio` : 'Toca aquí para ver los consejos y alertas de tu negocio 📊✨'}</p>
                       </div>
                     </div>
                     <ChevronRight size={16} color={T.muted} strokeWidth={1.75} style={{transform:showCoach?'rotate(90deg)':'none',transition:'transform .2s'}}/>
