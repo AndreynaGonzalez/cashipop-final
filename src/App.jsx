@@ -2960,19 +2960,20 @@ export default function App() {
           const top5 = conceptos.slice(0, 5)
           const insumosCat = catList.find(c => c.name === 'insumos')
           const tips = []
+          const B = (t) => <strong style={{textTransform:'capitalize'}}>{t}</strong>
 
           // 1. Materia prima vs total
           if (insumosCat && totalGas > 0) {
             const pctIns = Math.round(insumosCat.value / totalGas * 100)
-            if (pctIns > 40) tips.push({ icon: Lightbulb, text: `Materia prima e insumos representan el ${pctIns}% de tus salidas. Revisa porciones o evalúa compras en volumen con proveedores clave para proteger tu margen.` })
-            else tips.push({ icon: CheckCircle, text: `Excelente control en insumos (${pctIns}%). Tus gastos en materia prima están en un rango saludable.`, good: true })
+            if (pctIns > 40) tips.push({ good: false, body: <>{B('Insumos')} representan el <strong>{pctIns}%</strong> de tus salidas. Revisa porciones o evalúa compras en volumen con proveedores clave para proteger tu margen.</> })
+            else tips.push({ good: true, body: <>¡Excelente control! Tus gastos en {B('insumos')} están en un rango saludable ({pctIns}%). ¡Estás cuidando tus ganancias como una campeona!</> })
           }
 
-          // 2. Insumos críticos (carne, pollo, etc > 25% de insumos)
+          // 2. Insumos críticos
           if (insumosCat && insumosCat.value > 0) {
             for (const c of conceptos) {
               if (['carne','pollo','queso','verdura'].includes(c.name) && (c.value / insumosCat.value) > 0.25) {
-                tips.push({ icon: Lightbulb, text: `Análisis de compras: "${c.name}" representa el ${Math.round(c.value/insumosCat.value*100)}% de tus insumos. Evalúa si puedes negociar mejor precio por cantidad.` })
+                tips.push({ good: false, body: <>Detectamos un gasto importante en {B(c.name)} dentro de tus insumos (<strong>{Math.round(c.value/insumosCat.value*100)}%</strong>). Evalúa si puedes negociar un mejor precio por cantidad con el proveedor.</> })
               }
             }
           }
@@ -2980,13 +2981,13 @@ export default function App() {
           // 3. Logística > 15%
           const logCat = catList.find(c => ['delivery','transporte','logística'].includes(c.name))
           if (logCat && totalGas > 0 && (logCat.value / totalGas) > 0.15) {
-            tips.push({ icon: Lightbulb, text: `Optimización de despachos: logística representa el ${Math.round(logCat.value/totalGas*100)}% del total. Evalúa si las rutas están optimizadas o si se pueden agrupar pedidos.` })
+            tips.push({ good: false, body: <>El gasto en {B('logística')} está alto este período (<strong>{Math.round(logCat.value/totalGas*100)}%</strong>). Evalúa si las rutas de reparto están optimizadas o si se pueden agrupar pedidos.</> })
           }
 
-          // 4. Conceptos recurrentes (nombre repetido 3+ veces)
+          // 4. Conceptos recurrentes
           for (const c of conceptos) {
             if (c.count >= 3 && !['insumos','mercado','sueldos','servicios','café'].includes(c.name)) {
-              tips.push({ icon: Lightbulb, text: `Seguimiento: has registrado ${c.count} salidas bajo "${c.name}" (${fUSD(c.value)}). Tenlo en cuenta para tu planificación de caja.` })
+              tips.push({ good: false, body: <>Has registrado <strong>{c.count} salidas</strong> bajo {B(c.name)} ({fUSD(c.value)}). Tenlo en cuenta para tu planificación de caja de este período.</> })
               break
             }
           }
@@ -2995,19 +2996,20 @@ export default function App() {
           const gastosHormiga = gastosPeriodo.filter(g => toUSD(g.monto, g.moneda, tasa) < 5)
           if (gastosHormiga.length > 5) {
             const sumaH = redondear(gastosHormiga.reduce((a,g) => a + toUSD(g.monto, g.moneda, tasa), 0))
-            tips.push({ icon: Lightbulb, text: `Gastos hormiga: ${gastosHormiga.length} salidas pequeñas suman ${fUSD(sumaH)}. Intenta centralizar esas compras en un solo día.` })
+            tips.push({ good: false, body: <>Detectamos <strong>{gastosHormiga.length} salidas pequeñas</strong> que suman {fUSD(sumaH)}. Aunque parecen menores, al sumarlas impactan tu balance. Intenta centralizar esas compras en un solo día.</> })
           }
 
-          // 6. Día pico y día flojo
+          // 6. Día pico
           if (maxDiaFecha) {
-            tips.push({ icon: Calendar, text: `Planificación: los ${maxDiaNombre.toLowerCase()} concentran la mayor salida de dinero. Intenta programar pagos fijos para otros días.` })
+            tips.push({ good: false, body: <>Los <strong style={{textTransform:'capitalize'}}>{maxDiaNombre.toLowerCase()}</strong> concentran la mayor salida de dinero. Intenta programar los pagos fijos para otros días para que no se junte todo.</> })
           }
-          const diasNombres = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado']
+          // 7. Día flojo
+          const diasNombres = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado']
           const gastoPorDow = [0,0,0,0,0,0,0]
           for (const g of gastosPeriodo) { gastoPorDow[new Date(g.fecha+'T12:00:00').getDay()] += toUSD(g.monto, g.moneda, tasa) }
           let minDow = 1; for (let i=2;i<7;i++) if (gastoPorDow[i]<gastoPorDow[minDow] && gastoPorDow[i]>0) minDow=i
-          if (gastoPorDow[minDow] > 0 && minDow !== new Date(maxDiaFecha+'T12:00:00').getDay()) {
-            tips.push({ icon: Lightbulb, text: `Los ${diasNombres[minDow]} suelen ser más calmados. Buen momento para inventarios o negociar con proveedores.` })
+          if (gastoPorDow[minDow] > 0 && maxDiaFecha && minDow !== new Date(maxDiaFecha+'T12:00:00').getDay()) {
+            tips.push({ good: true, body: <>Los <strong>{diasNombres[minDow]}</strong> suelen ser más calmados. Buen momento para hacer inventarios o negociar con proveedores sin presión.</> })
           }
 
           if (tips.length === 0 && top5.length === 0) return null
@@ -3035,25 +3037,28 @@ export default function App() {
                 </>
               )}
 
-              {/* Coach desplegable */}
+              {/* Tu Aliado Andino — Coach desplegable */}
               {tips.length > 0 && (
-                <div onClick={()=>setShowCoach(!showCoach)} style={{background:'linear-gradient(135deg,#f8f6fb,#f0ecf8)',border:`1px solid rgba(94,64,91,0.08)`,borderRadius:18,padding:'16px 18px',marginBottom:18,cursor:'pointer',WebkitTapHighlightColor:'transparent',transition:'all .2s'}}>
+                <div onClick={()=>setShowCoach(!showCoach)} style={{background:'linear-gradient(135deg,#faf9fc,#f3effb)',border:`1px solid rgba(94,64,91,0.06)`,borderRadius:20,padding:'18px 20px',marginBottom:18,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                     <div style={{display:'flex',alignItems:'center',gap:10}}>
-                      <Lightbulb size={18} color='#B8A3B5' strokeWidth={1.75}/>
+                      <span style={{fontSize:20}}>✨</span>
                       <div>
-                        <p style={{fontSize:14,fontWeight:700,color:T.navy}}>Asistente de Balance</p>
-                        <p style={{fontSize:12,color:T.muted,marginTop:2}}>{showCoach ? `${tips.length} sugerencia${tips.length>1?'s':''}` : 'Toca aquí para ver sugerencias sobre tus gastos'}</p>
+                        <p style={{fontSize:15,fontWeight:800,color:T.navy}}>Tu Aliado Andino</p>
+                        <p style={{fontSize:12,color:T.muted,marginTop:2}}>{showCoach ? `${tips.length} sugerencia${tips.length>1?'s':''} para ti` : 'Toca aquí para ver cómo hacer brillar tu negocio'}</p>
                       </div>
                     </div>
                     <ChevronRight size={16} color={T.muted} strokeWidth={1.75} style={{transform:showCoach?'rotate(90deg)':'none',transition:'transform .2s'}}/>
                   </div>
                   {showCoach && (
-                    <div style={{marginTop:16,display:'flex',flexDirection:'column',gap:12}}>
+                    <div style={{marginTop:16,display:'flex',flexDirection:'column',gap:10}} onClick={e=>e.stopPropagation()}>
                       {tips.map((tip, i) => (
-                        <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,background:'rgba(255,255,255,0.7)',borderRadius:14,padding:'12px 14px'}}>
-                          <tip.icon size={15} color={tip.good?T.forest:'#B8A3B5'} strokeWidth={1.75} style={{marginTop:2,flexShrink:0}}/>
-                          <p style={{fontSize:13,fontWeight:500,color:T.navy,lineHeight:1.5,textTransform:'capitalize'}}>{tip.text}</p>
+                        <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,
+                          background:tip.good?'#ecfdf5':'#f5f3ff',
+                          border:`1px solid ${tip.good?'rgba(45,106,79,0.1)':'rgba(94,64,91,0.06)'}`,
+                          borderRadius:16,padding:'14px 16px'}}>
+                          <span style={{fontSize:16,flexShrink:0,marginTop:1}}>{tip.good?'🎉':'💡'}</span>
+                          <p style={{fontSize:13,fontWeight:500,color:T.navy,lineHeight:1.6}}>{tip.body}</p>
                         </div>
                       ))}
                     </div>
