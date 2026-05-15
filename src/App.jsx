@@ -2182,8 +2182,19 @@ export default function App() {
         <p style={{fontSize:13,color:T.sub,marginBottom:20,lineHeight:1.5}}>Selecciona el día para que el registro quede en la fecha correcta</p>
         <input type="date" value={gasto.fecha || ''} max={getVzlaDate()}
           onChange={e => setGasto(g => ({ ...g, fecha: e.target.value }))}
-          style={{width:'100%',height:50,fontSize:17,fontWeight:700,color:T.brand,background:T.amberLight,border:`2px solid ${T.brandGold}`,borderRadius:14,padding:'0 16px',outline:'none',textAlign:'center'}}
+          style={{
+            width:'100%', height:54, fontSize:18, fontWeight:700,
+            color:'#1a1a1a', background:'#ffffff',
+            border:`2px solid ${T.brandGold}`, borderRadius:14,
+            padding:'12px 16px', outline:'none',
+            WebkitAppearance:'none', MozAppearance:'none', appearance:'none',
+          }}
         />
+        {gasto.fecha && (
+          <p style={{fontSize:15,fontWeight:700,color:T.brand,marginTop:14}}>
+            {fDate(gasto.fecha)}
+          </p>
+        )}
       </Card>
       <Btn onClick={()=>{if(!gasto.fecha){showToast('Selecciona una fecha');return};go('nuevoGasto')}} bg={T.brand} full icon={ChevronRight}
         style={{padding:'16px',fontSize:15}} disabled={!gasto.fecha}>
