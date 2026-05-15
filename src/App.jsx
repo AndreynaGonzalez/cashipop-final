@@ -737,7 +737,7 @@ export default function App() {
   const [progOCR,    setProgOCR]    = useState(0)
   const [ocrRes,     setOcrRes]     = useState(null)
   const [campoVoz,   setCampoVoz]   = useState(null)
-  const [gasto,      setGasto]      = useState({concepto:'',monto:'',moneda:'BS',categoria:'insumos'})
+  const [gasto,      setGasto]      = useState({concepto:'',monto:'',moneda:'BS',categoria:'insumos',fecha:''})
   const [confirm,    setConfirm]    = useState(null)
   const [pendGastos, setPendGastos] = useState([])
   const [historial,  setHistorial]  = useState([])
@@ -865,15 +865,18 @@ export default function App() {
     const concepto = capitalizar(g.concepto)
     const montoNum = n(g.monto)
     const montoUSD = g.moneda === 'USD' ? redondear(montoNum) : redondear(montoNum / data.tasa)
-    const entry = { ...g, concepto, monto: montoNum, montoUSD, id: Date.now() + Math.random() }
+    const fechaFinal = g.fecha || getVzlaDate()
+    const entry = { ...g, concepto, monto: montoNum, montoUSD, fecha: fechaFinal, id: Date.now() + Math.random() }
 
-    // Optimistic UI: agregar al estado local al instante
-    const nueva = { ...data, gastos: [entry, ...data.gastos] }
-    setData(nueva); guardarData(nueva)
+    // Optimistic UI: agregar al estado local si es de hoy
+    if (fechaFinal === getVzlaDate()) {
+      const nueva = { ...data, gastos: [entry, ...data.gastos] }
+      setData(nueva); guardarData(nueva)
+    }
 
-    // Sync a Supabase
+    // Sync a Supabase con la fecha indicada
     insertGasto({
-      fecha: getVzlaDate(),
+      fecha: fechaFinal,
       concepto,
       monto: montoUSD,
       moneda: 'USD',
@@ -882,7 +885,7 @@ export default function App() {
     }).then(row => {
       if (row) setDbGastos(prev => [row, ...prev])
     })
-    return nueva
+    return entry
   }
 
   function agregarGasto(forzar=false) {
@@ -902,12 +905,12 @@ export default function App() {
       }
     }
 
+    const fechaGasto = gasto.fecha || getVzlaDate()
+    const esAnterior = fechaGasto !== getVzlaDate()
     _commitGasto(gasto)
-    // Limpiar formulario
-    setGasto({ concepto: '', monto: '', moneda: 'BS', categoria: 'insumos' })
-    // Ir a la lista de gastos para que vea el nuevo item
-    go('gastos')
-    showToast('¡Listo! Gasto anotado correctamente.', 3000)
+    setGasto({ concepto: '', monto: '', moneda: 'BS', categoria: 'insumos', fecha: '' })
+    go(esAnterior ? 'historial' : 'gastos')
+    showToast(esAnterior ? `¡Listo! Gasto registrado en ${fDate(fechaGasto)}.` : '¡Listo! Gasto anotado correctamente.', 3000)
   }
 
   function commitPendGastos() {
@@ -2220,11 +2223,26 @@ export default function App() {
         `}</style>
       </Card>
 
-      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20}}>
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
         <div style={{flex:1,height:1,background:T.border}}/>
         <span style={{fontSize:11,color:T.muted,fontWeight:600}}>O uno a la vez</span>
         <div style={{flex:1,height:1,background:T.border}}/>
       </div>
+
+      {/* Selector de fecha */}
+      <Label>FECHA DEL GASTO</Label>
+      <Card style={{marginBottom:16,padding:'14px 16px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <Calendar size={16} color={gasto.fecha && gasto.fecha !== getVzlaDate() ? T.brandGold : T.muted} strokeWidth={1.75}/>
+          <input type="date" value={gasto.fecha || getVzlaDate()} max={getVzlaDate()}
+            onChange={e => setGasto(g => ({ ...g, fecha: e.target.value }))}
+            style={{flex:1,height:36,fontSize:14,fontWeight:600,color:T.navy,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:12,padding:'0 12px',outline:'none'}}
+          />
+          {gasto.fecha && gasto.fecha !== getVzlaDate() && (
+            <span style={{fontSize:10,fontWeight:700,color:T.brandGold,background:T.amberLight,padding:'3px 8px',borderRadius:8,whiteSpace:'nowrap'}}>Gasto anterior</span>
+          )}
+        </div>
+      </Card>
 
       <Label>CATEGORÍA</Label>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:20}}>
