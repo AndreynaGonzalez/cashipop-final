@@ -787,7 +787,8 @@ export default function App() {
   const [authError,  setAuthError]  = useState('')
   const [authLoading,setAuthLoading]= useState(false)
   const [showPass,   setShowPass]   = useState(false)
-  const [metPeriodo, setMetPeriodo] = useState('semana') // 'semana' | 'mes' | 'año'
+  const [metPeriodo, setMetPeriodo] = useState('semana')
+  const [showCoach,  setShowCoach]  = useState(false)
   const [pantalla,   setPantalla]   = useState('home')
   const [data,       setData]       = useState(null)
   const [confetti,   setConfetti]   = useState(false)
@@ -2953,41 +2954,111 @@ export default function App() {
           </Card>
         )}
 
-        {/* ── Top conceptos (agrupados por fuzzy match) ── */}
+        {/* ── Asistente de Balance (Coach) ── */}
         {(() => {
           const conceptos = agruparConceptos(gastosPeriodo, tasa)
-          if (conceptos.length === 0) return null
-          const top = conceptos.slice(0, 5)
-          // Alerta inteligente
+          const top5 = conceptos.slice(0, 5)
           const insumosCat = catList.find(c => c.name === 'insumos')
-          const carneConcepto = conceptos.find(c => c.name === 'carne')
-          const alertaCarne = insumosCat && carneConcepto && insumosCat.value > 0 && (carneConcepto.value / insumosCat.value) > 0.25
+          const tips = []
+
+          // 1. Materia prima vs total
+          if (insumosCat && totalGas > 0) {
+            const pctIns = Math.round(insumosCat.value / totalGas * 100)
+            if (pctIns > 40) tips.push({ icon: Lightbulb, text: `Materia prima e insumos representan el ${pctIns}% de tus salidas. Revisa porciones o evalúa compras en volumen con proveedores clave para proteger tu margen.` })
+            else tips.push({ icon: CheckCircle, text: `Excelente control en insumos (${pctIns}%). Tus gastos en materia prima están en un rango saludable.`, good: true })
+          }
+
+          // 2. Insumos críticos (carne, pollo, etc > 25% de insumos)
+          if (insumosCat && insumosCat.value > 0) {
+            for (const c of conceptos) {
+              if (['carne','pollo','queso','verdura'].includes(c.name) && (c.value / insumosCat.value) > 0.25) {
+                tips.push({ icon: Lightbulb, text: `Análisis de compras: "${c.name}" representa el ${Math.round(c.value/insumosCat.value*100)}% de tus insumos. Evalúa si puedes negociar mejor precio por cantidad.` })
+              }
+            }
+          }
+
+          // 3. Logística > 15%
+          const logCat = catList.find(c => ['delivery','transporte','logística'].includes(c.name))
+          if (logCat && totalGas > 0 && (logCat.value / totalGas) > 0.15) {
+            tips.push({ icon: Lightbulb, text: `Optimización de despachos: logística representa el ${Math.round(logCat.value/totalGas*100)}% del total. Evalúa si las rutas están optimizadas o si se pueden agrupar pedidos.` })
+          }
+
+          // 4. Conceptos recurrentes (nombre repetido 3+ veces)
+          for (const c of conceptos) {
+            if (c.count >= 3 && !['insumos','mercado','sueldos','servicios','café'].includes(c.name)) {
+              tips.push({ icon: Lightbulb, text: `Seguimiento: has registrado ${c.count} salidas bajo "${c.name}" (${fUSD(c.value)}). Tenlo en cuenta para tu planificación de caja.` })
+              break
+            }
+          }
+
+          // 5. Gastos hormiga
+          const gastosHormiga = gastosPeriodo.filter(g => toUSD(g.monto, g.moneda, tasa) < 5)
+          if (gastosHormiga.length > 5) {
+            const sumaH = redondear(gastosHormiga.reduce((a,g) => a + toUSD(g.monto, g.moneda, tasa), 0))
+            tips.push({ icon: Lightbulb, text: `Gastos hormiga: ${gastosHormiga.length} salidas pequeñas suman ${fUSD(sumaH)}. Intenta centralizar esas compras en un solo día.` })
+          }
+
+          // 6. Día pico y día flojo
+          if (maxDiaFecha) {
+            tips.push({ icon: Calendar, text: `Planificación: los ${maxDiaNombre.toLowerCase()} concentran la mayor salida de dinero. Intenta programar pagos fijos para otros días.` })
+          }
+          const diasNombres = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado']
+          const gastoPorDow = [0,0,0,0,0,0,0]
+          for (const g of gastosPeriodo) { gastoPorDow[new Date(g.fecha+'T12:00:00').getDay()] += toUSD(g.monto, g.moneda, tasa) }
+          let minDow = 1; for (let i=2;i<7;i++) if (gastoPorDow[i]<gastoPorDow[minDow] && gastoPorDow[i]>0) minDow=i
+          if (gastoPorDow[minDow] > 0 && minDow !== new Date(maxDiaFecha+'T12:00:00').getDay()) {
+            tips.push({ icon: Lightbulb, text: `Los ${diasNombres[minDow]} suelen ser más calmados. Buen momento para inventarios o negociar con proveedores.` })
+          }
+
+          if (tips.length === 0 && top5.length === 0) return null
+
           return (
             <>
-              <Label>TOP CONCEPTOS {periodoLabel.toUpperCase()}</Label>
-              <Card style={{marginBottom:14,padding:'16px 20px'}}>
-                {top.map((c, i) => (
-                  <div key={c.name} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:i<top.length-1?`1px solid ${T.border}`:'none'}}>
-                    <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      <span style={{fontSize:12,fontWeight:800,color:T.muted,width:18}}>{i+1}.</span>
-                      <span style={{fontSize:14,fontWeight:700,color:T.navy,textTransform:'capitalize'}}>{c.name}</span>
+              {/* Top conceptos */}
+              {top5.length > 0 && (
+                <>
+                  <Label>TOP CONCEPTOS {periodoLabel.toUpperCase()}</Label>
+                  <Card style={{marginBottom:14,padding:'16px 20px'}}>
+                    {top5.map((c, i) => (
+                      <div key={c.name} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:i<top5.length-1?`1px solid ${T.border}`:'none'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <span style={{fontSize:12,fontWeight:800,color:T.muted,width:18}}>{i+1}.</span>
+                          <span style={{fontSize:14,fontWeight:700,color:T.navy,textTransform:'capitalize'}}>{c.name}</span>
+                        </div>
+                        <div style={{textAlign:'right'}}>
+                          <span style={{fontSize:14,fontWeight:800,color:T.rose}}>{fUSD(c.value)}</span>
+                          <span style={{fontSize:11,color:T.muted,marginLeft:6}}>{c.count}x</span>
+                        </div>
+                      </div>
+                    ))}
+                  </Card>
+                </>
+              )}
+
+              {/* Coach desplegable */}
+              {tips.length > 0 && (
+                <div onClick={()=>setShowCoach(!showCoach)} style={{background:'linear-gradient(135deg,#f8f6fb,#f0ecf8)',border:`1px solid rgba(94,64,91,0.08)`,borderRadius:18,padding:'16px 18px',marginBottom:18,cursor:'pointer',WebkitTapHighlightColor:'transparent',transition:'all .2s'}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:10}}>
+                      <Lightbulb size={18} color='#B8A3B5' strokeWidth={1.75}/>
+                      <div>
+                        <p style={{fontSize:14,fontWeight:700,color:T.navy}}>Asistente de Balance</p>
+                        <p style={{fontSize:12,color:T.muted,marginTop:2}}>{showCoach ? `${tips.length} sugerencia${tips.length>1?'s':''}` : 'Toca aquí para ver sugerencias sobre tus gastos'}</p>
+                      </div>
                     </div>
-                    <div style={{textAlign:'right'}}>
-                      <span style={{fontSize:14,fontWeight:800,color:T.rose}}>{fUSD(c.value)}</span>
-                      <span style={{fontSize:11,color:T.muted,marginLeft:6}}>{c.count}x</span>
+                    <ChevronRight size={16} color={T.muted} strokeWidth={1.75} style={{transform:showCoach?'rotate(90deg)':'none',transition:'transform .2s'}}/>
+                  </div>
+                  {showCoach && (
+                    <div style={{marginTop:16,display:'flex',flexDirection:'column',gap:12}}>
+                      {tips.map((tip, i) => (
+                        <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,background:'rgba(255,255,255,0.7)',borderRadius:14,padding:'12px 14px'}}>
+                          <tip.icon size={15} color={tip.good?T.forest:'#B8A3B5'} strokeWidth={1.75} style={{marginTop:2,flexShrink:0}}/>
+                          <p style={{fontSize:13,fontWeight:500,color:T.navy,lineHeight:1.5,textTransform:'capitalize'}}>{tip.text}</p>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ))}
-              </Card>
-              {alertaCarne && (
-                <Card style={{marginBottom:18,background:T.roseLight,border:`1px solid ${T.rose}22`,padding:'14px 18px'}}>
-                  <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
-                    <AlertCircle size={16} color={T.rose} strokeWidth={1.75} style={{marginTop:2,flexShrink:0}}/>
-                    <p style={{fontSize:13,fontWeight:600,color:T.navy,lineHeight:1.5}}>
-                      El gasto en carne representa el {Math.round(carneConcepto.value / insumosCat.value * 100)}% de tus insumos {periodoLabel}. Considera revisar proveedores o porciones.
-                    </p>
-                  </div>
-                </Card>
+                  )}
+                </div>
               )}
             </>
           )
