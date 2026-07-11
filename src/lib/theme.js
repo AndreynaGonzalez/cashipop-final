@@ -1,0 +1,23 @@
+// ─── Design Tokens ───────────────────────────────────────────────────────────
+export const T = {
+  bg:          '#FFF1DC',
+  surface:     '#FFFFFF',
+  border:      'rgba(94,64,91,0.08)',
+  navy:        '#5E405B',
+  sub:         '#7D6279',
+  muted:       '#B8A3B5',
+  forest:      '#2D6A4F',
+  forestLight: '#E8F5EE',
+  cobalt:      '#5E405B',
+  cobaltLight: '#F5ECF4',
+  rose:        '#FF7752',
+  roseLight:   '#FFF0EB',
+  amber:       '#FFB752',
+  amberLight:  '#FFF7E8',
+  wa:          '#25D366',
+  brand:       '#5E405B',
+  brandGold:   '#FFB752',
+  alert:       '#FF7752',
+  shadowCard:  '0 2px 32px rgba(94,64,91,0.06)',
+  shadowNav:   '0 -1px 0 rgba(94,64,91,0.05)',
+}
